@@ -1,0 +1,11 @@
+# Binaries
+/nodevitals
+/dist/
+*.exe
+# Test
+*.out
+coverage.*
+# Go
+/vendor/
+# Editors
+.DS_Store
