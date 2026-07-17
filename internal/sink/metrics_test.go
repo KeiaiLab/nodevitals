@@ -42,7 +42,10 @@ func TestMetricsUpdateReplacesSnapshot(t *testing.T) {
 
 	srv := httptest.NewServer(m.Handler())
 	defer srv.Close()
-	resp, _ := http.Get(srv.URL)
+	resp, err := http.Get(srv.URL)
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 	if !strings.Contains(string(raw), "9") {
