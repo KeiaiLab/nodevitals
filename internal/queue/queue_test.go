@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -69,5 +70,42 @@ func TestDeliverGivesUpAfterMaxAttempts(t *testing.T) {
 	}
 	if s.calls != 3 {
 		t.Fatalf("want 3 attempts, got %d", s.calls)
+	}
+}
+
+func TestDeliverStopsOnContextCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled
+	s := &flakySink{failFirst: 100}
+	err := DeliverWithRetry(ctx, s, nil, 5,
+		Backoff{Base: time.Millisecond, Max: time.Second},
+		func(time.Duration) {}, func() float64 { return 0 })
+	if err == nil {
+		t.Fatal("expected error on cancelled context")
+	}
+	if s.calls != 0 {
+		t.Fatalf("cancelled context must make zero attempts, got %d", s.calls)
+	}
+}
+
+func TestDeliverRejectsNonPositiveMaxAttempts(t *testing.T) {
+	s := &flakySink{}
+	err := DeliverWithRetry(context.Background(), s, nil, 0,
+		Backoff{}, func(time.Duration) {}, func() float64 { return 0 })
+	if err == nil {
+		t.Fatal("expected error for maxAttempts=0")
+	}
+	if s.calls != 0 {
+		t.Fatalf("maxAttempts=0 must make zero calls, got %d", s.calls)
+	}
+	if strings.Contains(err.Error(), "%!w") {
+		t.Fatalf("error must be well-formed, got %q", err.Error())
+	}
+}
+
+func TestBackoffForClampsNegativeAttempt(t *testing.T) {
+	b := Backoff{Base: 100 * time.Millisecond, Max: time.Second}
+	if got := b.For(-5, 1.0); got != 100*time.Millisecond {
+		t.Fatalf("negative attempt should clamp to attempt-0 window (100ms), got %v", got)
 	}
 }
