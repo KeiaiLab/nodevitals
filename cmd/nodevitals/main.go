@@ -37,6 +37,13 @@ func main() {
 	switch cfg.Tier {
 	case "smart":
 		reg.Add(collector.NewSmart(cfg.Node, collector.NewDevProbe(cfg.DevRoot)))
+	case "gpu":
+		r, err := collector.NewNVMLReader()
+		if err != nil {
+			slog.Error("gpu reader init", "err", err)
+			os.Exit(1)
+		}
+		reg.Add(collector.NewGPUCollector(cfg.Node, r))
 	default: // "core"
 		reg.Add(collector.NewLoadAvg(cfg.Node, cfg.ProcRoot))
 		reg.Add(collector.NewCPU(cfg.Node, cfg.ProcRoot))
