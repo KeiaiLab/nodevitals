@@ -1,0 +1,22 @@
+{{- if .Values.tiers.core.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nodevitals-core
+  labels:
+    app.kubernetes.io/name: nodevitals
+    app.kubernetes.io/component: core
+data:
+  config.yaml: |
+    tier: core
+    intervalSeconds: {{ .Values.intervalSeconds }}
+    procRoot: /host/proc
+    rules:
+{{ toYaml .Values.rules | indent 6 }}
+    sinks:
+      metrics:
+        enabled: true
+        listenAddr: "{{ .Values.metrics.listenAddr }}"
+      webhook:
+{{ toYaml .Values.webhooks | indent 8 }}
+{{- end }}
