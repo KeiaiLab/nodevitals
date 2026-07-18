@@ -27,25 +27,25 @@ func TestXidClassifyKnownSeverities(t *testing.T) {
 		{94, "warning"},
 	}
 	for _, c := range cases {
-		got := ClassifyXid(c.xid)
+		got := classifyXid(c.xid)
 		if got.Severity != c.want {
-			t.Fatalf("ClassifyXid(%d).Severity = %q, want %q", c.xid, got.Severity, c.want)
+			t.Fatalf("classifyXid(%d).Severity = %q, want %q", c.xid, got.Severity, c.want)
 		}
 	}
 }
 
 func TestXidClassifyUnknownDefaultsToWarning(t *testing.T) {
-	got := ClassifyXid(999)
+	got := classifyXid(999)
 	if got.Severity != "warning" {
-		t.Fatalf("ClassifyXid(999).Severity = %q, want %q (conservative default for unregistered XID)", got.Severity, "warning")
+		t.Fatalf("classifyXid(999).Severity = %q, want %q (conservative default for unregistered XID)", got.Severity, "warning")
 	}
 }
 
 func TestXidClassifyConditionAlwaysGpuXidError(t *testing.T) {
-	for _, xid := range []uint64{13, 48, 63, 79, 999} {
-		got := ClassifyXid(xid)
+	for _, xid := range []uint64{13, 31, 43, 48, 63, 64, 74, 79, 92, 94, 95, 119, 120, 999} {
+		got := classifyXid(xid)
 		if got.Condition != "gpu_xid_error" {
-			t.Fatalf("ClassifyXid(%d).Condition = %q, want %q", xid, got.Condition, "gpu_xid_error")
+			t.Fatalf("classifyXid(%d).Condition = %q, want %q", xid, got.Condition, "gpu_xid_error")
 		}
 	}
 }
@@ -53,9 +53,9 @@ func TestXidClassifyConditionAlwaysGpuXidError(t *testing.T) {
 func TestXidClassifyDescriptionNonEmpty(t *testing.T) {
 	all := []uint64{13, 31, 43, 48, 63, 64, 74, 79, 92, 94, 95, 119, 120, 999}
 	for _, xid := range all {
-		got := ClassifyXid(xid)
+		got := classifyXid(xid)
 		if got.Description == "" {
-			t.Fatalf("ClassifyXid(%d).Description is empty, want a short human-readable string", xid)
+			t.Fatalf("classifyXid(%d).Description is empty, want a short human-readable string", xid)
 		}
 	}
 }

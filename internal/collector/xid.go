@@ -24,7 +24,7 @@ var xidClasses = map[uint64]xidClass{
 	// operator action implied.
 	13: {Severity: "info", Condition: "gpu_xid_error", Description: "Graphics engine exception"},
 	31: {Severity: "info", Condition: "gpu_xid_error", Description: "GPU memory page fault"},
-	43: {Severity: "info", Condition: "gpu_xid_error", Description: "GPU stopped processing (reset required)"},
+	43: {Severity: "info", Condition: "gpu_xid_error", Description: "GPU stopped processing (usually application-triggered, GPU stays healthy)"},
 
 	// warning — degraded but still serving; worth watching.
 	63: {Severity: "warning", Condition: "gpu_xid_error", Description: "ECC page retirement or row-remap recording event"},
@@ -41,10 +41,10 @@ var xidClasses = map[uint64]xidClass{
 	120: {Severity: "critical", Condition: "gpu_xid_error", Description: "GSP error"},
 }
 
-// ClassifyXid returns the classification for an NVIDIA Xid error code. Codes
+// classifyXid returns the classification for an NVIDIA Xid error code. Codes
 // not present in the table conservatively default to "warning" rather than
 // being silently treated as benign.
-func ClassifyXid(xid uint64) xidClass {
+func classifyXid(xid uint64) xidClass {
 	if c, ok := xidClasses[xid]; ok {
 		return c
 	}

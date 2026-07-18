@@ -3,9 +3,9 @@ package collector
 import "testing"
 
 func TestThrottleDecodeSingleBit(t *testing.T) {
-	got := DecodeThrottle(0x1)
+	got := decodeThrottle(0x1)
 	if len(got) != 1 || got[0] != "gpu_idle" {
-		t.Fatalf("DecodeThrottle(0x1) = %v, want [gpu_idle]", got)
+		t.Fatalf("decodeThrottle(0x1) = %v, want [gpu_idle]", got)
 	}
 }
 
@@ -13,22 +13,22 @@ func TestThrottleDecodeSingleBit(t *testing.T) {
 // order the design demands (0x20 before 0x40) — a map-backed implementation
 // would make this flaky.
 func TestThrottleDecodeCombinedThermalBits(t *testing.T) {
-	got := DecodeThrottle(0x20 | 0x40)
+	got := decodeThrottle(0x20 | 0x40)
 	want := []string{"sw_thermal_slowdown", "hw_thermal_slowdown"}
 	if len(got) != len(want) {
-		t.Fatalf("DecodeThrottle(0x60) = %v, want %v", got, want)
+		t.Fatalf("decodeThrottle(0x60) = %v, want %v", got, want)
 	}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Fatalf("DecodeThrottle(0x60)[%d] = %q, want %q (ascending-bit order)", i, got[i], want[i])
+			t.Fatalf("decodeThrottle(0x60)[%d] = %q, want %q (ascending-bit order)", i, got[i], want[i])
 		}
 	}
 }
 
 func TestThrottleDecodeZeroMaskIsEmpty(t *testing.T) {
-	got := DecodeThrottle(0)
+	got := decodeThrottle(0)
 	if len(got) != 0 {
-		t.Fatalf("DecodeThrottle(0) = %v, want empty", got)
+		t.Fatalf("decodeThrottle(0) = %v, want empty", got)
 	}
 }
 
@@ -47,20 +47,20 @@ func TestThrottleDecodeAllBitsAscendingOrder(t *testing.T) {
 		"hw_power_brake_slowdown",
 		"display_clock_setting",
 	}
-	got := DecodeThrottle(all)
+	got := decodeThrottle(all)
 	if len(got) != len(want) {
-		t.Fatalf("DecodeThrottle(all) = %v (len %d), want %v (len %d)", got, len(got), want, len(want))
+		t.Fatalf("decodeThrottle(all) = %v (len %d), want %v (len %d)", got, len(got), want, len(want))
 	}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Fatalf("DecodeThrottle(all)[%d] = %q, want %q", i, got[i], want[i])
+			t.Fatalf("decodeThrottle(all)[%d] = %q, want %q", i, got[i], want[i])
 		}
 	}
 }
 
 func TestThrottleDecodeUnknownBitsIgnored(t *testing.T) {
-	got := DecodeThrottle(0x1 | 0x200) // 0x200 is not a documented reason bit
+	got := decodeThrottle(0x1 | 0x200) // 0x200 is not a documented reason bit
 	if len(got) != 1 || got[0] != "gpu_idle" {
-		t.Fatalf("DecodeThrottle(0x1|0x200) = %v, want [gpu_idle] (unknown bits ignored, no panic)", got)
+		t.Fatalf("decodeThrottle(0x1|0x200) = %v, want [gpu_idle] (unknown bits ignored, no panic)", got)
 	}
 }

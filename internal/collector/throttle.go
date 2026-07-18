@@ -1,7 +1,7 @@
 package collector
 
 // throttleBits fixes clocks-throttle-reason decode order — map iteration is
-// nondeterministic and would make DecodeThrottle's output flaky, the same
+// nondeterministic and would make decodeThrottle's output flaky, the same
 // reason sataAttrMetrics (smart.go) is an ordered slice rather than a map.
 // Bit values are NVML's nvmlClocksThrottleReasons* mask (nvml.h), ascending.
 //
@@ -26,11 +26,11 @@ var throttleBits = []struct {
 	{0x100, "display_clock_setting"},
 }
 
-// DecodeThrottle decodes an NVML clocks-throttle-reasons bitmask
+// decodeThrottle decodes an NVML clocks-throttle-reasons bitmask
 // (nvmlDeviceGetCurrentClocksThrottleReasons) into its set reason labels, in
 // fixed ascending-bit order. Bits outside throttleBits are ignored. A zero
 // mask yields an empty (non-nil) slice.
-func DecodeThrottle(mask uint64) []string {
+func decodeThrottle(mask uint64) []string {
 	out := []string{}
 	for _, b := range throttleBits {
 		if mask&b.mask != 0 {
