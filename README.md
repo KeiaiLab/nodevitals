@@ -169,6 +169,21 @@ Requirements: Go 1.26+, and (for the chart) Helm 3 + kubeconform. The core/smart
 is built for `linux/amd64` and `linux/arm64`; the GPU `:v-gpu` image is `linux/amd64`-only
 (the go-nvml binding needs cgo, and arm64 GPU support is deferred).
 
+## Supply chain
+
+Releases are cut with local `make` targets (not CI — see [ADR-0002](docs/kb/adr/0002-supply-chain-and-release.md)):
+
+```bash
+make scan        # trivy vuln scan — fails on HIGH/CRITICAL
+make sbom        # CycloneDX SBOM → dist/sbom-<version>.cdx.json
+make sign        # cosign keyless-sign the pushed images
+make release     # maintainer: build (multi-arch) → push → scan → sbom → sign
+```
+
+The distroless/static image carries no OS package surface: a `trivy` scan of the current build
+reports **0 HIGH/CRITICAL vulnerabilities** (debian-base 0, Go binary 0). The GPU image adds a
+glibc (cc-debian12) base for the cgo/NVML binding.
+
 ## Contributing
 
 Issues and pull requests are welcome. The codebase is small, fully unit-tested without
