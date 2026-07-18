@@ -30,7 +30,7 @@ webhooks: []
 #    secret: ""
 
 metrics:
-  listenAddr: ":9847"
+  port: 9847
 
 resources:
   requests:

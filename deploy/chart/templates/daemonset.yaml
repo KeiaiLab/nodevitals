@@ -17,6 +17,7 @@ spec:
         app.kubernetes.io/name: nodevitals
         app.kubernetes.io/component: core
     spec:
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -34,7 +35,7 @@ spec:
                   fieldPath: spec.nodeName
           ports:
             - name: metrics
-              containerPort: 9847
+              containerPort: {{ .Values.metrics.port }}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

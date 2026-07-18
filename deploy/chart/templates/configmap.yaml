@@ -16,7 +16,7 @@ data:
     sinks:
       metrics:
         enabled: true
-        listenAddr: "{{ .Values.metrics.listenAddr }}"
+        listenAddr: ":{{ .Values.metrics.port }}"
       webhook:
 {{ toYaml .Values.webhooks | indent 8 }}
 {{- end }}
