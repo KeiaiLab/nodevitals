@@ -1,0 +1,23 @@
+{{- if .Values.tiers.smart.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nodevitals-smart
+  labels:
+    app.kubernetes.io/name: nodevitals
+    app.kubernetes.io/component: smart
+data:
+  config.yaml: |
+    tier: smart
+    intervalSeconds: {{ .Values.intervalSeconds }}
+    devRoot: /host/dev
+    rules:
+{{ toYaml .Values.smartRules | indent 6 }}
+    sinks:
+      metrics:
+        enabled: true
+        listenAddr: ":{{ .Values.metrics.port }}"
+      # 주의: 아래 webhook.secret 은 ConfigMap 평문 — 실제 secret 금지 (후속: Secret 주입)
+      webhook:
+{{ toYaml .Values.webhooks | indent 8 }}
+{{- end }}

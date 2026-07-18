@@ -3,6 +3,7 @@ module github.com/KeiaiLab/nodevitals
 go 1.26
 
 require (
+	github.com/anatol/smart.go v0.0.0-20260706181715-5cd61760b880
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/procfs v0.21.1
 	gopkg.in/yaml.v3 v3.0.1

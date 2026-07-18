@@ -15,12 +15,12 @@ Helm chart replace the `node_exporter` + `dcgm-exporter` + `smartctl_exporter` w
 
 > [!NOTE]
 > **Status: early development (v0.2-dev).** The pipeline (collect → event engine →
-> webhook/REST/metrics → Helm) works end-to-end, and the **core tier is complete**:
-> load, CPU utilization, memory, disk I/O, per-interface network, and hwmon
-> temperature/fan sensors — all unprivileged. GPU (NVML + XID events) and disk SMART
-> tiers are landing next. See the
+> webhook/REST/metrics → Helm) works end-to-end. **Core tier** (load, CPU, memory,
+> disk I/O, network, hwmon — unprivileged) and the **SMART tier** (SATA/NVMe disk
+> health via a privileged, opt-in DaemonSet) are implemented. The GPU tier (NVML +
+> XID events) is next. See the
 > [design doc](docs/superpowers/specs/2026-07-17-nodevitals-design.md) and
-> [M2 design](docs/superpowers/specs/2026-07-18-nodevitals-m2-design.md) for the architecture.
+> [M2 design](docs/superpowers/specs/2026-07-18-nodevitals-m2-design.md).
 
 ## Why
 

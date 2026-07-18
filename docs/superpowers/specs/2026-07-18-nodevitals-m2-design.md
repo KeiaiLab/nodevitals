@@ -95,10 +95,12 @@ volumeMounts:
 | NVMe media_errors 델타 | NVMe log | `nvme_media_error_detected` |
 | NVMe critical_warning 비트 | NVMe log | `nvme_critical_warning` |
 
+**구현 노트 (M2c 실제)**: 현 엔진은 threshold-on-value(§10 M1 엔진)라 "surge(델타)" 룰은 미지원 → SMART 이벤트는 **nonzero-threshold 룰**(`smart_pending_sectors > 0` 등, 대부분의 사전신호를 커버)로 배송한다. 진짜 델타 "surge" 룰타입은 엔진 확장 필요 → 별도 이슈로 이연. device 는 런타임 발견이라 **device-와일드카드 룰**(`device: ""`)로 전 디스크에 적용(per-device 히스테리시스, Task 5a).
+
 > [!IMPORTANT]
 > **정직성 (M1 스펙 §11 계승)**: SMART 는 실패의 **23~56% 를 무신호로 놓친다**(Backblaze 76.7%만 사전 신호 / Google FAST'07 56%+ 무신호). 이벤트 문구는 **"위험 상승 신호"** 이지 **"곧 고장"이 아니다**. `will_fail` 류 단정 금지.
 
-**/metrics 호환**: smartctl_exporter 메트릭명 1:1 매칭(`smartctl_device_attribute{attribute_id,...}`, `smartctl_device_percentage_used`, `smartctl_device_available_spare`, `smartctl_device_media_errors`, `device` 조인키) → 기존 대시보드 부분 드롭인. 방치된 smartctl_exporter(15개월 무릴리스) 대체가 채택 쐐기.
+**메트릭 네이밍 (native, #1 계약 정합)**: SMART/NVMe 메트릭은 전 메트릭 `nodevitals_hw_` 접두 + 네이티브 이름(`smart_temperature_celsius`·`smart_power_on_hours`·`smart_reallocated_sectors`·`smart_reported_uncorrectable`·`smart_command_timeout`·`smart_pending_sectors`·`smart_offline_uncorrectable`·`nvme_percentage_used`·`nvme_available_spare`·`nvme_available_spare_threshold`·`nvme_media_errors`·`nvme_critical_warning`)로 노출한다. smartctl_exporter 원명(`smartctl_device_*`) 에뮬레이션은 **하지 않는다** — #1에서 동결한 "전 표면 동일 이름 + 단일 접두" 계약이 sink의 접두 우회 특례를 금지하기 때문. 기존 smartctl_exporter 대시보드 이관은 [드롭인이 아니라 마이그레이션 가이드](#) 로 제공한다(메트릭명 대응은 위 목록 ↔ smartctl_device_* 매핑). 방치된 smartctl_exporter(15개월 무릴리스) 대체 가치는 유지.
 
 ---
 

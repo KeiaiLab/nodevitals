@@ -11,10 +11,12 @@ import (
 	"github.com/KeiaiLab/nodevitals/internal/model"
 )
 
-type ruleState struct {
-	rule      config.Rule
-	enterFor  int
-	exitFor   int
+// deviceState is the mutable hysteresis state for one concrete device matched
+// by a rule. An exact-device rule (Device != "") ever populates exactly one
+// entry (keyed by that device). A wildcard rule (Device == "") populates one
+// independent entry per distinct Sample.Device it has seen, so e.g. sda
+// entering ALERT never affects sdb's hysteresis.
+type deviceState struct {
 	active    bool
 	breachRun int
 	clearRun  int
@@ -22,9 +24,17 @@ type ruleState struct {
 	startedAt time.Time
 }
 
-// Engine evaluates rules against samples, holding per-rule hysteresis state.
-// Evaluate is deterministic: the same samples always yield the same events in a
-// stable order (samples outer, rules in construction order inner).
+type ruleState struct {
+	rule     config.Rule
+	enterFor int
+	exitFor  int
+	devices  map[string]*deviceState
+}
+
+// Engine evaluates rules against samples, holding per-rule (and, for
+// device-wildcard rules, per-device) hysteresis state. Evaluate is
+// deterministic: the same samples always yield the same events in a stable
+// order (samples outer, rules in construction order inner).
 type Engine struct {
 	node  string
 	rules []*ruleState
@@ -39,6 +49,7 @@ func NewEngine(node string, rules []config.Rule) *Engine {
 			rule:     r,
 			enterFor: max1(r.EnterFor),
 			exitFor:  max1(r.ExitFor),
+			devices:  map[string]*deviceState{},
 		})
 	}
 	return &Engine{node: node, rules: states}
@@ -51,36 +62,44 @@ func (e *Engine) Evaluate(samples []model.Sample) []model.Event {
 	var out []model.Event
 	for _, s := range samples {
 		for _, st := range e.rules {
-			if st.rule.Metric != s.Metric || st.rule.Device != s.Device {
+			if st.rule.Metric != s.Metric {
 				continue
 			}
+			if st.rule.Device != "" && st.rule.Device != s.Device {
+				continue // "" = wildcard (matches any device); non-empty = exact
+			}
+			ds := st.devices[s.Device]
+			if ds == nil {
+				ds = &deviceState{}
+				st.devices[s.Device] = ds
+			}
 			if s.Value > st.rule.Threshold {
-				st.breachRun++
-				st.clearRun = 0
+				ds.breachRun++
+				ds.clearRun = 0
 			} else {
-				st.clearRun++
-				st.breachRun = 0
+				ds.clearRun++
+				ds.breachRun = 0
 			}
 
 			switch {
-			case !st.active && st.breachRun >= st.enterFor:
-				st.active = true
-				st.seq++
-				st.startedAt = s.Timestamp
+			case !ds.active && ds.breachRun >= st.enterFor:
+				ds.active = true
+				ds.seq++
+				ds.startedAt = s.Timestamp
 				out = append(out, model.Event{
 					Node: e.node, Tier: s.Tier, Device: s.Device,
 					Condition: st.rule.Condition, Phase: model.PhaseEnter,
-					Severity: st.rule.Severity, Seq: st.seq, StartedAt: s.Timestamp,
+					Severity: st.rule.Severity, Seq: ds.seq, StartedAt: s.Timestamp,
 					Detail: map[string]any{"value": s.Value, "threshold": st.rule.Threshold},
 				})
-			case st.active && st.clearRun >= st.exitFor:
-				st.active = false
-				st.seq++
+			case ds.active && ds.clearRun >= st.exitFor:
+				ds.active = false
+				ds.seq++
 				out = append(out, model.Event{
 					Node: e.node, Tier: s.Tier, Device: s.Device,
 					Condition: st.rule.Condition, Phase: model.PhaseExit,
-					Severity: st.rule.Severity, Seq: st.seq,
-					StartedAt: st.startedAt, EndedAt: s.Timestamp,
+					Severity: st.rule.Severity, Seq: ds.seq,
+					StartedAt: ds.startedAt, EndedAt: s.Timestamp,
 					Detail: map[string]any{"value": s.Value, "threshold": st.rule.Threshold},
 				})
 			}

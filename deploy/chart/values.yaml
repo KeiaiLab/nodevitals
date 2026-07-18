@@ -24,6 +24,14 @@ rules:
     enterFor: 3
     exitFor: 3
 
+# smart tier 이벤트 룰 (device: "" = 와일드카드 — 동적 디스크 전체 대상, 사용자 override)
+smartRules:
+  - { metric: smart_pending_sectors,     device: "", condition: smart_pending_sectors,  severity: critical, threshold: 0,  enterFor: 1, exitFor: 1 }
+  - { metric: smart_reallocated_sectors, device: "", condition: smart_reallocated,      severity: warning,  threshold: 0,  enterFor: 1, exitFor: 1 }
+  - { metric: smart_offline_uncorrectable, device: "", condition: smart_offline_uncorrectable, severity: critical, threshold: 0, enterFor: 1, exitFor: 1 }
+  - { metric: nvme_percentage_used,      device: "", condition: nvme_wearout,           severity: warning,  threshold: 90, enterFor: 1, exitFor: 1 }
+  - { metric: nvme_critical_warning,     device: "", condition: nvme_critical_warning,  severity: critical, threshold: 0,  enterFor: 1, exitFor: 1 }
+
 # 고객 백엔드 webhook.
 # ⚠️ webhooks[].secret 을 여기 평문으로 두지 마시오 — 이 값은 ConfigMap 으로 렌더되어
 #    평문 노출됩니다. HMAC secret 의 Kubernetes Secret 주입은 후속 마일스톤입니다.

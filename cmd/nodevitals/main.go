@@ -34,12 +34,17 @@ func main() {
 	}
 
 	var reg collector.Registry
-	reg.Add(collector.NewLoadAvg(cfg.Node, cfg.ProcRoot))
-	reg.Add(collector.NewCPU(cfg.Node, cfg.ProcRoot))
-	reg.Add(collector.NewMem(cfg.Node, cfg.ProcRoot))
-	reg.Add(collector.NewNet(cfg.Node, cfg.ProcRoot))
-	reg.Add(collector.NewDisk(cfg.Node, cfg.ProcRoot, cfg.SysRoot))
-	reg.Add(collector.NewHwmon(cfg.Node, cfg.SysRoot))
+	switch cfg.Tier {
+	case "smart":
+		reg.Add(collector.NewSmart(cfg.Node, collector.NewDevProbe(cfg.DevRoot)))
+	default: // "core"
+		reg.Add(collector.NewLoadAvg(cfg.Node, cfg.ProcRoot))
+		reg.Add(collector.NewCPU(cfg.Node, cfg.ProcRoot))
+		reg.Add(collector.NewMem(cfg.Node, cfg.ProcRoot))
+		reg.Add(collector.NewNet(cfg.Node, cfg.ProcRoot))
+		reg.Add(collector.NewDisk(cfg.Node, cfg.ProcRoot, cfg.SysRoot))
+		reg.Add(collector.NewHwmon(cfg.Node, cfg.SysRoot))
+	}
 
 	eng := event.NewEngine(cfg.Node, cfg.Rules)
 

@@ -45,6 +45,7 @@ type Config struct {
 	IntervalSeconds int         `yaml:"intervalSeconds"`
 	ProcRoot        string      `yaml:"procRoot"`
 	SysRoot         string      `yaml:"sysRoot"`
+	DevRoot         string      `yaml:"devRoot"`
 	Rules           []Rule      `yaml:"rules"`
 	Sinks           SinksConfig `yaml:"sinks"`
 }
@@ -72,6 +73,9 @@ func Load(path string) (Config, error) {
 	}
 	if c.SysRoot == "" {
 		c.SysRoot = "/sys"
+	}
+	if c.DevRoot == "" {
+		c.DevRoot = "/dev"
 	}
 	return c, nil
 }

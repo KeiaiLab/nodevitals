@@ -148,6 +148,60 @@ func TestEvaluateIsDeterministic(t *testing.T) {
 	}
 }
 
+func TestWildcardRuleTracksDevicesIndependently(t *testing.T) {
+	r := config.Rule{
+		Metric: "smart_pending_sectors", Device: "", Condition: "pending",
+		Severity: "critical", Threshold: 0, EnterFor: 1, ExitFor: 1,
+	}
+	e := NewEngine("n", []config.Rule{r})
+	t1 := time.Unix(1, 0).UTC()
+
+	sda1 := model.Sample{Node: "n", Tier: "smart", Device: "sda", Metric: "smart_pending_sectors", Value: 5, Timestamp: t1}
+	sdb1 := model.Sample{Node: "n", Tier: "smart", Device: "sdb", Metric: "smart_pending_sectors", Value: 0, Timestamp: t1}
+	ev := e.Evaluate([]model.Sample{sda1, sdb1})
+	if len(ev) != 1 {
+		t.Fatalf("want exactly 1 ENTER (sda breach, sdb clear), got %d: %+v", len(ev), ev)
+	}
+	if ev[0].Phase != model.PhaseEnter || ev[0].Device != "sda" {
+		t.Fatalf("want ENTER for device sda, got %+v", ev[0])
+	}
+
+	t2 := time.Unix(2, 0).UTC()
+	sda2 := model.Sample{Node: "n", Tier: "smart", Device: "sda", Metric: "smart_pending_sectors", Value: 0, Timestamp: t2}
+	sdb2 := model.Sample{Node: "n", Tier: "smart", Device: "sdb", Metric: "smart_pending_sectors", Value: 5, Timestamp: t2}
+	ev2 := e.Evaluate([]model.Sample{sda2, sdb2})
+	if len(ev2) != 2 {
+		t.Fatalf("want EXIT(sda)+ENTER(sdb), got %d: %+v", len(ev2), ev2)
+	}
+	if ev2[0].Phase != model.PhaseExit || ev2[0].Device != "sda" {
+		t.Fatalf("want EXIT for device sda first (sample order), got %+v", ev2[0])
+	}
+	if ev2[1].Phase != model.PhaseEnter || ev2[1].Device != "sdb" {
+		t.Fatalf("want ENTER for device sdb second (sample order), got %+v", ev2[1])
+	}
+}
+
+func TestExactDeviceRuleUnaffectedByWildcardChange(t *testing.T) {
+	r := config.Rule{
+		Metric: "load1", Device: "cpu", Condition: "load_high",
+		Severity: "warning", Threshold: 4.0, EnterFor: 1, ExitFor: 1,
+	}
+	e := NewEngine("n", []config.Rule{r})
+	ts := time.Unix(1, 0).UTC()
+
+	cpu := model.Sample{Node: "n", Tier: "core", Device: "cpu", Metric: "load1", Value: 9, Timestamp: ts}
+	ev := e.Evaluate([]model.Sample{cpu})
+	if len(ev) != 1 || ev[0].Phase != model.PhaseEnter || ev[0].Device != "cpu" {
+		t.Fatalf("exact-device rule must still ENTER for its device, got %+v", ev)
+	}
+
+	other := model.Sample{Node: "n", Tier: "core", Device: "cpu0", Metric: "load1", Value: 9, Timestamp: ts}
+	ev2 := e.Evaluate([]model.Sample{other})
+	if len(ev2) != 0 {
+		t.Fatalf("exact-device rule (Device=cpu) must NOT match a different device cpu0, got %+v", ev2)
+	}
+}
+
 func TestEnterAndExitHaveDistinctIDs(t *testing.T) {
 	r := config.Rule{Metric: "load1", Device: "cpu", Condition: "load_high", Severity: "warning", Threshold: 4.0, EnterFor: 1, ExitFor: 1}
 	e := NewEngine("n", []config.Rule{r})
