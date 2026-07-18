@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"runtime"
 	"testing"
 	"time"
 
@@ -102,10 +103,13 @@ func TestRunDrainsEventSourceCollectorsToWebhooksBypassingEngine(t *testing.T) {
 	fake := &fakeEventCollector{ch: make(chan model.Event, 1)}
 	reg.Add(fake)
 	eng := event.NewEngine("n", cfg.Rules)
-	cap := newChanSink()
+	// Two sinks: the drain must fan every event out to ALL webhooks, not just
+	// the first (mirrors Tick's delivery loop).
+	sinks := []*chanSink{newChanSink(), newChanSink()}
 
-	a := New(cfg, &reg, eng, []sink.Sink{cap}, sink.NewMetrics())
+	a := New(cfg, &reg, eng, []sink.Sink{sinks[0], sinks[1]}, sink.NewMetrics())
 
+	baseGoroutines := runtime.NumGoroutine()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go a.Run(ctx)
@@ -117,17 +121,31 @@ func TestRunDrainsEventSourceCollectorsToWebhooksBypassingEngine(t *testing.T) {
 	}
 	fake.ch <- want
 
-	select {
-	case got := <-cap.ch:
-		if got.Condition != want.Condition || got.Device != want.Device || got.Phase != want.Phase {
-			t.Fatalf("drained event mismatch: got %+v, want %+v", got, want)
+	// Every webhook must receive the drained event.
+	for i, s := range sinks {
+		select {
+		case got := <-s.ch:
+			if got.Condition != want.Condition || got.Device != want.Device || got.Phase != want.Phase {
+				t.Fatalf("sink[%d]: drained event mismatch: got %+v, want %+v", i, got, want)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("sink[%d]: timed out waiting for drained event to reach webhook sink", i)
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for drained event to reach webhook sink")
 	}
 
-	// Both termination paths — ctx cancel and source channel close — must be
-	// safe to trigger without panicking or leaking the drain goroutine.
+	// Both termination paths — ctx cancel and source channel close — must stop
+	// the drain goroutine, not leak it. Cancel, close, then poll until the
+	// goroutine count returns to the pre-Run baseline; a genuine leak keeps it
+	// elevated until the 2s deadline and fails.
 	cancel()
 	close(fake.ch)
+	deadline := time.After(2 * time.Second)
+	for runtime.NumGoroutine() > baseGoroutines {
+		select {
+		case <-deadline:
+			t.Fatalf("drain goroutine leaked: %d goroutines still running, want <= %d", runtime.NumGoroutine(), baseGoroutines)
+		default:
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
 }
