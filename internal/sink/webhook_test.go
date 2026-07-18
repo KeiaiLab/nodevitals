@@ -15,6 +15,23 @@ import (
 	"github.com/KeiaiLab/nodevitals/internal/model"
 )
 
+func TestWebhookNameRedactsSecretsInURL(t *testing.T) {
+	// Name() feeds the public /metrics label nodevitals_delivery_dropped_total{sink}
+	// and logs — it must never leak a secret carried in the URL path/query/userinfo.
+	cases := []struct{ url, want string }{
+		{"https://user:pass@backend.example/hooks/T00/B00/SECRET?token=abc", "webhook:https://backend.example"},
+		{"https://hooks.slack.com/services/T000/B000/XXXXSECRETXXXX", "webhook:https://hooks.slack.com"},
+		{"https://backend.example:8443/h", "webhook:https://backend.example:8443"},
+		{"not a url", "webhook"}, // unparseable / host-less → emit no URL
+	}
+	for _, c := range cases {
+		w := NewWebhook(config.WebhookConfig{URL: c.url}, nil)
+		if got := w.Name(); got != c.want {
+			t.Fatalf("Name(%q) = %q, want %q (must not leak path/query/userinfo)", c.url, got, c.want)
+		}
+	}
+}
+
 func TestWebhookPostsSignedCloudEvent(t *testing.T) {
 	var gotBody []byte
 	var gotSig, gotType, gotID, gotTs string

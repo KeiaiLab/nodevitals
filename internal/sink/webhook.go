@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -62,7 +63,16 @@ func NewWebhook(cfg config.WebhookConfig, client *http.Client) *Webhook {
 	return &Webhook{cfg: cfg, client: client}
 }
 
-func (w *Webhook) Name() string { return "webhook:" + w.cfg.URL }
+// Name identifies the sink in logs and metrics. It deliberately redacts the
+// webhook URL to scheme://host: the path, query, and userinfo can carry secrets
+// (Slack-style token-in-path, "?token=" query, "user:pass@"), and this value is
+// exposed in the public /metrics label nodevitals_delivery_dropped_total{sink}.
+func (w *Webhook) Name() string {
+	if u, err := url.Parse(w.cfg.URL); err == nil && u.Host != "" {
+		return "webhook:" + u.Scheme + "://" + u.Host
+	}
+	return "webhook" // unparseable / host-less: emit no URL rather than risk a leak
+}
 
 func (w *Webhook) EmitEvents(ctx context.Context, events []model.Event) error {
 	for _, ev := range events {
