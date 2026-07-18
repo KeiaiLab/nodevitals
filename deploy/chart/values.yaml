@@ -51,11 +51,14 @@ gpuRules:
     exitFor: 1
 
 # 고객 백엔드 webhook.
-# ⚠️ webhooks[].secret 을 여기 평문으로 두지 마시오 — 이 값은 ConfigMap 으로 렌더되어
-#    평문 노출됩니다. HMAC secret 의 Kubernetes Secret 주입은 후속 마일스톤입니다.
+# secret 은 nodevitals-webhooks Kubernetes Secret 으로 렌더되고, 컨테이너에는
+# WEBHOOK_SECRET_N env(secretKeyRef)로 주입되어 config 의 ${WEBHOOK_SECRET_N}
+# placeholder 로 확장됩니다 — ConfigMap 에 평문으로 남지 않습니다.
+# (values 파일 자체에는 secret 을 넣지 마시오 — --set/외부 secret store 를 사용하고,
+#  values 를 GitOps 로 커밋하지 마시오.)
 webhooks: []
 #  - url: https://backend.example/hook
-#    secret: ""   # 후속: Secret 참조로 대체
+#    secret: "whsec_..."   # → Secret 으로 렌더, env 주입 (평문 ConfigMap 아님)
 
 metrics:
   port: 9847

@@ -80,14 +80,32 @@ flowchart TD
 ## Quickstart
 
 ```bash
-# Install the core tier (unprivileged) via Helm
+# The core/smart tiers read the host's /proc, /sys, /dev via hostPath, which
+# BOTH the PSA Baseline and Restricted profiles forbid — label the namespace
+# to the privileged level first (the gpu tier does not need this):
+kubectl label namespace default pod-security.kubernetes.io/enforce=privileged --overwrite
+
+# Install the core tier via Helm. The webhook signing secret is stored in a
+# Kubernetes Secret and injected via env — never written to a ConfigMap. Prefer
+# --set-file (reads the key from a file, keeping it out of shell history) or an
+# external secret store over an inline --set for the secret value.
+printf %s "$WEBHOOK_SIGNING_KEY" > /tmp/wh0.secret
 helm install nodevitals ./deploy/chart \
-  --set 'webhooks[0].url=https://your-backend.example/hooks/hardware'
+  --set 'webhooks[0].url=https://your-backend.example/hooks/hardware' \
+  --set-file 'webhooks[0].secret=/tmp/wh0.secret'
 
 # Verify
 kubectl get daemonset nodevitals-core
 curl http://<pod-ip>:9847/metrics | grep nodevitals_hw_
 ```
+
+> [!IMPORTANT]
+> **Pod Security Admission:** core and smart mount hostPath (`/proc`, `/sys`,
+> `/dev`), which is forbidden by both PSA Baseline and Restricted — those tiers
+> require a namespace labeled `pod-security.kubernetes.io/enforce=privileged`
+> (see the chart's `NOTES.txt`). The **gpu tier is Restricted-compliant**. This
+> is inherent to node-level hardware telemetry, not a hardening gap — see the
+> [production-readiness report](docs/production-readiness.md).
 
 Or run the binary directly against a config file:
 

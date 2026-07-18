@@ -70,7 +70,7 @@
 flowchart TB
     subgraph agent["nodevitals · 단일 Go 바이너리 (Helm 차트가 tier별 1~3 DaemonSet 렌더)"]
         direction LR
-        Core["core tier<br/>무특권 · baseline-hardened<br/>cpu·mem·disk·net·hwmon"]
+        Core["core tier<br/>무특권(no privileged/caps) · hostPath /proc,/sys → PSA privileged ns 필요<br/>cpu·mem·disk·net·hwmon"]
         Gpu["gpu tier<br/>NVIDIA 디바이스 접근<br/>nvml-metrics·nvml-events(XID 구독)"]
         Smart["smart tier<br/>특권 runAsUser:0<br/>smart·nvme-wear"]
         Engine["event engine · 순수 함수<br/>상태전이 ENTER/EXIT<br/>+ 히스테리시스·임계 룰"]
@@ -214,7 +214,7 @@ Event {
 
 - **tier 별 최소 권한**: core=무특권(hostNetwork/hostPID 불필요 — 이게 node_exporter 차트 기본값 대비 실측 우위) / gpu=디바이스 접근 / smart=특권 격리
 - SMART tier: `runAsUser:0` + `drop:[ALL]` + `add:[SYS_RAWIO, SYS_ADMIN]` + `readOnlyRootFilesystem` + `/dev` 전체 대신 특정 블록 디바이스 노드만
-- **정직한 표기**: "privileged 없는 SMART" 는 **거짓** (PSA baseline 허용 캡 13종에 SYS_RAWIO 없음). core tier 는 **"PSA restricted 통과" 가 아니라 "baseline-hardened"** 로 표기 (2026-07-18 whole-branch 리뷰 확정) — core DaemonSet 이 `hostPath: /proc` 를 마운트하는데 PSS **restricted** 프로파일의 Volume Types 컨트롤은 hostPath 를 금지하므로 restricted 네임스페이스는 이 파드를 거부한다. 즉 drop-ALL·readOnlyRootFS·no-host-namespace 로 restricted 에 *근접*하나 hostPath 때문에 restricted 자체는 아니다. 카피는 "baseline 초과 하드닝" 으로만.
+- **정직한 표기 (2026-07-18 운영준비도 감사 정정)**: "privileged 없는 SMART" 는 **거짓** (PSA baseline 허용 캡 13종에 SYS_RAWIO 없음). core tier 도 **baseline·restricted 어느 쪽도 통과하지 못한다** — 이전 "baseline-hardened" 표기(2026-07-18 whole-branch 리뷰)는 **오류**였다: core DaemonSet 이 `hostPath: /proc,/sys` 를 마운트하는데, hostPath 는 PSS **baseline** 의 "HostPath Volumes" 컨트롤(*"HostPath volumes must be forbidden"*)과 **restricted** 의 "Volume Types" 컨트롤 **양쪽에서 금지**된다(kubernetes.io PSS 실측 확인 2026-07-18). 따라서 baseline 또는 restricted 를 강제하는 네임스페이스는 core·smart 파드를 **모두 거부**하며, 두 tier 는 `pod-security.kubernetes.io/enforce=privileged` 네임스페이스를 **요구**한다(차트 NOTES.txt 안내). 보안 자세(drop-ALL·readOnlyRootFS·runAsNonRoot·no-host-namespace)는 *privileged-PSA 범위 안에서* 하드닝된 것이지 baseline 통과가 아니다. **gpu tier 만** hostPath 부재로 restricted 통과.
 - 시크릿(webhook HMAC 키): k8s Secret 마운트, 평문 금지
 
 ---

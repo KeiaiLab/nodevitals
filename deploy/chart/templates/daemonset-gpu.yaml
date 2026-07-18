@@ -39,6 +39,7 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            {{- with (include "nodevitals.webhookSecretEnv" .) }}{{ . | nindent 12 }}{{- end }}
             - name: NVIDIA_VISIBLE_DEVICES
               value: "all"
             - name: NVIDIA_DRIVER_CAPABILITIES

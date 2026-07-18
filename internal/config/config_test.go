@@ -87,3 +87,57 @@ func TestLoadDefaultsProcRootAndInterval(t *testing.T) {
 		t.Fatalf("interval default = %v, want 15s", c.Interval())
 	}
 }
+
+func TestLoadExpandsWebhookSecretFromEnv(t *testing.T) {
+	t.Setenv("NV_TEST_WEBHOOK_SECRET", "whsec_from_k8s_secret")
+	dir := t.TempDir()
+	p := filepath.Join(dir, "c.yaml")
+	os.WriteFile(p, []byte(`
+node: n
+tier: core
+sinks:
+  webhook:
+    - url: https://backend.example/hook
+      secret: ${NV_TEST_WEBHOOK_SECRET}
+    - url: https://other.example/hook
+      secret: literal-unchanged
+    - url: https://third.example/hook
+      secret: whsec_a$b${NOT_EXPANDED}c
+`), 0o644)
+	c, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// A bare ${ENV} placeholder is resolved from the environment (Secret-injected
+	// via secretKeyRef), so the signing key never lives in the ConfigMap plaintext.
+	if got := c.Sinks.Webhook[0].Secret; got != "whsec_from_k8s_secret" {
+		t.Fatalf("webhook[0].secret = %q, want expanded env value", got)
+	}
+	// A literal secret (no ${...}) passes through unchanged (backward compat).
+	if got := c.Sinks.Webhook[1].Secret; got != "literal-unchanged" {
+		t.Fatalf("webhook[1].secret = %q, want literal-unchanged", got)
+	}
+	// A literal secret containing '$' / '${...}' is NOT a bare reference, so it
+	// is left verbatim — never mangled by env expansion (real keys stay intact).
+	if got := c.Sinks.Webhook[2].Secret; got != "whsec_a$b${NOT_EXPANDED}c" {
+		t.Fatalf("webhook[2].secret = %q, want the literal left unchanged", got)
+	}
+}
+
+func TestLoadFailsClosedOnEmptyWebhookSecretRef(t *testing.T) {
+	// ${VAR} placeholder whose env var is unset → Load must error, not silently
+	// sign with an empty (publicly reproducible) HMAC key.
+	dir := t.TempDir()
+	p := filepath.Join(dir, "c.yaml")
+	os.WriteFile(p, []byte(`
+node: n
+tier: core
+sinks:
+  webhook:
+    - url: https://backend.example/hook
+      secret: ${NV_DEFINITELY_UNSET_SECRET_XYZ}
+`), 0o644)
+	if _, err := Load(p); err == nil {
+		t.Fatal("Load should fail closed when a ${VAR} webhook secret resolves empty, got nil error")
+	}
+}

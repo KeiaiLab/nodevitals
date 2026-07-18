@@ -1,4 +1,4 @@
-.PHONY: test vet fmt build docker chart-lint all build-gpu gpu-check
+.PHONY: test vet fmt build docker chart-lint chart-test all build-gpu gpu-check
 
 test:
 	go test ./...
@@ -23,5 +23,8 @@ gpu-check:
 
 chart-lint:
 	helm template nv deploy/chart | kubeconform -strict -summary
+
+chart-test:
+	bash deploy/chart/tests/secret-isolation.sh
 
 all: fmt vet test build

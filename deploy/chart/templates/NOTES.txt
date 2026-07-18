@@ -1,0 +1,41 @@
+nodevitals {{ .Chart.AppVersion }} installed in namespace "{{ .Release.Namespace }}".
+
+Enabled tiers:
+  core  : {{ .Values.tiers.core.enabled }}
+  smart : {{ .Values.tiers.smart.enabled }}
+  gpu   : {{ .Values.tiers.gpu.enabled }}
+
+──────────────────────────────────────────────────────────────────────────────
+⚠  Pod Security Admission (PSA) — REQUIRED for the core and smart tiers
+──────────────────────────────────────────────────────────────────────────────
+The core and smart tiers mount hostPath volumes (/proc, /sys, /dev) to read
+node hardware — a node-level telemetry agent cannot avoid this. hostPath is
+forbidden by BOTH the PSA **Baseline** and **Restricted** profiles ("HostPath
+Volumes" / "Volume Types" controls), so if this namespace enforces either level
+the pods will be REJECTED and never scheduled.
+
+If core or smart is enabled, label the namespace to the privileged level:
+
+    kubectl label namespace {{ .Release.Namespace }} \
+      pod-security.kubernetes.io/enforce=privileged --overwrite
+
+The smart tier additionally needs runAsUser:0 + SYS_RAWIO/SYS_ADMIN (real disk
+SMART pass-through). The **gpu tier is PSA-Restricted-compliant** (no hostPath)
+and needs no label.
+
+──────────────────────────────────────────────────────────────────────────────
+Webhook signing secret
+──────────────────────────────────────────────────────────────────────────────
+{{- if .Values.webhooks }}
+Configured secrets are stored in the "nodevitals-webhooks" Secret and injected
+into pods via WEBHOOK_SECRET_N env (secretKeyRef) — they are NOT written into a
+ConfigMap. Do not commit secret values to a GitOps values file; prefer
+`--set webhooks[N].secret=...` or an external secret store.
+{{- else }}
+No webhooks configured — events are exposed via /metrics and /v1/state only.
+Set webhooks[].url and webhooks[].secret to push signed events to your backend.
+{{- end }}
+
+Verify:
+    kubectl get daemonset -l app.kubernetes.io/name=nodevitals -n {{ .Release.Namespace }}
+    # then scrape a pod's :{{ .Values.metrics.port }}/metrics for nodevitals_hw_* series

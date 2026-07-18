@@ -17,7 +17,7 @@ data:
       metrics:
         enabled: true
         listenAddr: ":{{ .Values.metrics.port }}"
-      # 주의: 아래 webhook.secret 은 ConfigMap 평문 — 실제 secret 금지 (후속: Secret 주입)
+      # webhook.secret 은 ${WEBHOOK_SECRET_N} placeholder 로만 렌더 — 실제 키는 nodevitals-webhooks Secret 에서 env(secretKeyRef) 주입 (ConfigMap 평문 아님)
       webhook:
-{{ toYaml .Values.webhooks | indent 8 }}
+{{ include "nodevitals.webhookConfig" . | indent 8 }}
 {{- end }}

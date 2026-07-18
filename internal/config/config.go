@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -77,5 +78,40 @@ func Load(path string) (Config, error) {
 	if c.DevRoot == "" {
 		c.DevRoot = "/dev"
 	}
+	// Resolve a ${ENV} reference in webhook signing secrets so the key can be
+	// injected from a Kubernetes Secret via an env var (secretKeyRef) rather
+	// than living in the ConfigMap as plaintext. Only a value that is EXACTLY a
+	// single ${VAR} reference is resolved; any other literal — including a real
+	// secret that happens to contain '$' — is left untouched, never mangled.
+	//
+	// Fail CLOSED: if a ${VAR} reference resolves to an empty/unset env var,
+	// refuse to start. Signing with an empty key produces a publicly
+	// reproducible HMAC (no authenticity), and the ConfigMap placeholder hides
+	// the misconfiguration — so this must be a hard error, not a silent
+	// unsigned webhook. A deliberately unsigned webhook uses a literal empty
+	// secret (no ${...}), which is left as-is.
+	for i := range c.Sinks.Webhook {
+		if name, ok := envRef(c.Sinks.Webhook[i].Secret); ok {
+			v := os.Getenv(name)
+			if v == "" {
+				return Config{}, fmt.Errorf("webhook[%d] secret references ${%s}, but that env var is empty or unset (refusing to sign with an empty key)", i, name)
+			}
+			c.Sinks.Webhook[i].Secret = v
+		}
+	}
 	return c, nil
+}
+
+// envRef reports whether s is exactly a single "${VAR}" reference and, if so,
+// returns VAR. Any literal value (including one containing a '$') returns
+// ok=false so it is passed through unchanged.
+func envRef(s string) (string, bool) {
+	if len(s) < 4 || !strings.HasPrefix(s, "${") || !strings.HasSuffix(s, "}") {
+		return "", false
+	}
+	name := s[2 : len(s)-1]
+	if name == "" || strings.ContainsAny(name, "${} ") {
+		return "", false
+	}
+	return name, true
 }
