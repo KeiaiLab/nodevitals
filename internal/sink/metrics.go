@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/nodevitals/nodevitals/internal/model"
+	"github.com/KeiaiLab/nodevitals/internal/model"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )

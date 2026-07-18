@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nodevitals/nodevitals/internal/config"
-	"github.com/nodevitals/nodevitals/internal/model"
+	"github.com/KeiaiLab/nodevitals/internal/config"
+	"github.com/KeiaiLab/nodevitals/internal/model"
 )
 
 func rule() config.Rule {

@@ -4,7 +4,7 @@ package sink
 import (
 	"context"
 
-	"github.com/nodevitals/nodevitals/internal/model"
+	"github.com/KeiaiLab/nodevitals/internal/model"
 )
 
 // Sink delivers events to one destination.

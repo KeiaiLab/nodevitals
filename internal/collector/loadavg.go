@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nodevitals/nodevitals/internal/model"
+	"github.com/KeiaiLab/nodevitals/internal/model"
 )
 
 type loadAvg struct {

@@ -1,4 +1,4 @@
-module github.com/nodevitals/nodevitals
+module github.com/KeiaiLab/nodevitals
 
 go 1.26
 

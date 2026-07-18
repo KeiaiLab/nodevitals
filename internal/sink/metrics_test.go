@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nodevitals/nodevitals/internal/model"
+	"github.com/KeiaiLab/nodevitals/internal/model"
 )
 
 func TestMetricsExposesLatestSample(t *testing.T) {

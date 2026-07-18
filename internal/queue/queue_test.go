@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nodevitals/nodevitals/internal/model"
+	"github.com/KeiaiLab/nodevitals/internal/model"
 )
 
 func TestBackoffFullJitterBounded(t *testing.T) {

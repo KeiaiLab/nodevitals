@@ -5,7 +5,7 @@ package collector
 import (
 	"context"
 
-	"github.com/nodevitals/nodevitals/internal/model"
+	"github.com/KeiaiLab/nodevitals/internal/model"
 )
 
 // Collector samples one hardware domain.

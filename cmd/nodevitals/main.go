@@ -12,12 +12,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nodevitals/nodevitals/internal/agent"
-	"github.com/nodevitals/nodevitals/internal/collector"
-	"github.com/nodevitals/nodevitals/internal/config"
-	"github.com/nodevitals/nodevitals/internal/event"
-	"github.com/nodevitals/nodevitals/internal/httpapi"
-	"github.com/nodevitals/nodevitals/internal/sink"
+	"github.com/KeiaiLab/nodevitals/internal/agent"
+	"github.com/KeiaiLab/nodevitals/internal/collector"
+	"github.com/KeiaiLab/nodevitals/internal/config"
+	"github.com/KeiaiLab/nodevitals/internal/event"
+	"github.com/KeiaiLab/nodevitals/internal/httpapi"
+	"github.com/KeiaiLab/nodevitals/internal/sink"
 )
 
 func main() {

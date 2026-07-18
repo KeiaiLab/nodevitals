@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nodevitals/nodevitals/internal/model"
-	"github.com/nodevitals/nodevitals/internal/sink"
+	"github.com/KeiaiLab/nodevitals/internal/model"
+	"github.com/KeiaiLab/nodevitals/internal/sink"
 )
 
 // Backoff computes Full Jitter delays: random(0, min(Max, Base*2^attempt)).

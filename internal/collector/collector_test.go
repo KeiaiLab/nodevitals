@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/nodevitals/nodevitals/internal/model"
+	"github.com/KeiaiLab/nodevitals/internal/model"
 )
 
 type stubCollector struct {

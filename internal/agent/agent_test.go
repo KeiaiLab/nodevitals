@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/nodevitals/nodevitals/internal/collector"
-	"github.com/nodevitals/nodevitals/internal/config"
-	"github.com/nodevitals/nodevitals/internal/event"
-	"github.com/nodevitals/nodevitals/internal/model"
-	"github.com/nodevitals/nodevitals/internal/sink"
+	"github.com/KeiaiLab/nodevitals/internal/collector"
+	"github.com/KeiaiLab/nodevitals/internal/config"
+	"github.com/KeiaiLab/nodevitals/internal/event"
+	"github.com/KeiaiLab/nodevitals/internal/model"
+	"github.com/KeiaiLab/nodevitals/internal/sink"
 )
 
 type captureSink struct{ events []model.Event }

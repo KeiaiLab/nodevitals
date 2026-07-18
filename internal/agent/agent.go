@@ -8,12 +8,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nodevitals/nodevitals/internal/collector"
-	"github.com/nodevitals/nodevitals/internal/config"
-	"github.com/nodevitals/nodevitals/internal/event"
-	"github.com/nodevitals/nodevitals/internal/model"
-	"github.com/nodevitals/nodevitals/internal/queue"
-	"github.com/nodevitals/nodevitals/internal/sink"
+	"github.com/KeiaiLab/nodevitals/internal/collector"
+	"github.com/KeiaiLab/nodevitals/internal/config"
+	"github.com/KeiaiLab/nodevitals/internal/event"
+	"github.com/KeiaiLab/nodevitals/internal/model"
+	"github.com/KeiaiLab/nodevitals/internal/queue"
+	"github.com/KeiaiLab/nodevitals/internal/sink"
 )
 
 type Agent struct {

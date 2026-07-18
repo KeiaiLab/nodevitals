@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nodevitals/nodevitals/internal/config"
-	"github.com/nodevitals/nodevitals/internal/model"
+	"github.com/KeiaiLab/nodevitals/internal/config"
+	"github.com/KeiaiLab/nodevitals/internal/model"
 )
 
 type ruleState struct {

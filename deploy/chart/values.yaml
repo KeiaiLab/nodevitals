@@ -1,5 +1,5 @@
 image:
-  repository: ghcr.io/nodevitals/nodevitals
+  repository: ghcr.io/keiailab/nodevitals
   tag: ""            # 기본은 Chart.appVersion
   pullPolicy: IfNotPresent
 
