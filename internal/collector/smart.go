@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/KeiaiLab/nodevitals/internal/model"
@@ -31,6 +32,25 @@ type nvmeHealth struct {
 // device. anatol/smart.go is ioctl-bound and unmockable, so production code
 // wraps it behind this seam (Task 3); tests inject a fake.
 type smartProbe func(ctx context.Context) ([]smartDevice, error)
+
+// wholeSATADevice matches whole SATA/SCSI disk device names (sda, sdb, ...,
+// sdaa) but not their partitions (sda1). wholeNVMeDevice matches whole NVMe
+// namespace devices (nvme0n1, nvme10n1) but not their partitions
+// (nvme0n1p1). Compiled once — used by isWholeDevice.
+var (
+	wholeSATADevice = regexp.MustCompile(`^sd[a-z]+$`)
+	wholeNVMeDevice = regexp.MustCompile(`^nvme\d+n\d+$`)
+)
+
+// isWholeDevice reports whether name (a basename under devRoot, e.g. "sda" or
+// "nvme0n1") identifies a whole block device that the production probe
+// (smart_probe_linux.go) should glob in — as opposed to a partition, loop
+// device, device-mapper node, or optical drive, none of which carry their own
+// SMART/NVMe health data. OS-independent so it's unit-testable without a
+// disk.
+func isWholeDevice(name string) bool {
+	return wholeSATADevice.MatchString(name) || wholeNVMeDevice.MatchString(name)
+}
 
 type smartCollector struct {
 	node  string
