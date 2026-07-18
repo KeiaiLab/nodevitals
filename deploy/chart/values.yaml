@@ -1,6 +1,7 @@
 image:
   repository: ghcr.io/keiailab/nodevitals
   tag: ""            # 기본은 Chart.appVersion
+  gpuTag: ""         # 기본은 <Chart.appVersion>-gpu (glibc 변형)
   pullPolicy: IfNotPresent
 
 # tier 별 DaemonSet 렌더 토글. v0.1 은 core 만 구현.
@@ -31,6 +32,23 @@ smartRules:
   - { metric: smart_offline_uncorrectable, device: "", condition: smart_offline_uncorrectable, severity: critical, threshold: 0, enterFor: 1, exitFor: 1 }
   - { metric: nvme_percentage_used,      device: "", condition: nvme_wearout,           severity: warning,  threshold: 90, enterFor: 1, exitFor: 1 }
   - { metric: nvme_critical_warning,     device: "", condition: nvme_critical_warning,  severity: critical, threshold: 0,  enterFor: 1, exitFor: 1 }
+
+# gpu tier 이벤트 룰 (device: "" = 와일드카드 — 노드 내 GPU 전체 대상, 사용자 override)
+gpuRules:
+  - metric: gpu_temperature_celsius
+    device: ""
+    condition: gpu_hot
+    severity: warning
+    threshold: 85
+    enterFor: 3
+    exitFor: 3
+  - metric: gpu_ecc_uncorrected_total
+    device: ""
+    condition: gpu_ecc_uncorrected
+    severity: critical
+    threshold: 0
+    enterFor: 1
+    exitFor: 1
 
 # 고객 백엔드 webhook.
 # ⚠️ webhooks[].secret 을 여기 평문으로 두지 마시오 — 이 값은 ConfigMap 으로 렌더되어

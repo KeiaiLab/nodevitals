@@ -1,4 +1,4 @@
-.PHONY: test vet fmt build docker chart-lint all
+.PHONY: test vet fmt build docker chart-lint all build-gpu gpu-check
 
 test:
 	go test ./...
@@ -14,6 +14,12 @@ build:
 
 docker:
 	docker build -t ghcr.io/keiailab/nodevitals:dev .
+
+build-gpu:
+	docker build --platform=linux/amd64 --target gpu -t ghcr.io/keiailab/nodevitals:dev-gpu .
+
+gpu-check:
+	docker run --rm --platform=linux/amd64 -v "$$PWD":/src -w /src golang:1.26-bookworm sh -c 'CGO_ENABLED=1 go build -tags gpu ./...'
 
 chart-lint:
 	helm template nv deploy/chart | kubeconform -strict -summary

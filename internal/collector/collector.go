@@ -14,6 +14,16 @@ type Collector interface {
 	Collect(ctx context.Context) ([]model.Sample, error)
 }
 
+// EventSource is an optional capability a Collector may also implement: a
+// stream of hardware events produced asynchronously, outside the polled
+// Collect path. The agent discovers implementers via a runtime type
+// assertion (see Registry.EventSources) and drains them straight to the
+// webhook sinks, bypassing the threshold engine. The gpu tier's XID stream is
+// the first implementer.
+type EventSource interface {
+	Events() <-chan model.Event
+}
+
 // Registry holds the active collectors for a tier.
 type Registry struct {
 	collectors []Collector
@@ -31,6 +41,19 @@ func (r *Registry) CollectAll(ctx context.Context) []model.Sample {
 			continue
 		}
 		out = append(out, s...)
+	}
+	return out
+}
+
+// EventSources returns the registered collectors that also implement
+// EventSource, discovered by type assertion. The agent drains each to the
+// webhook sinks.
+func (r *Registry) EventSources() []EventSource {
+	var out []EventSource
+	for _, c := range r.collectors {
+		if es, ok := c.(EventSource); ok {
+			out = append(out, es)
+		}
 	}
 	return out
 }

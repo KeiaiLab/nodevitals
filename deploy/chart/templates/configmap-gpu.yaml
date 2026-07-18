@@ -1,0 +1,22 @@
+{{- if .Values.tiers.gpu.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nodevitals-gpu
+  labels:
+    app.kubernetes.io/name: nodevitals
+    app.kubernetes.io/component: gpu
+data:
+  config.yaml: |
+    tier: gpu
+    intervalSeconds: {{ .Values.intervalSeconds }}
+    rules:
+{{ toYaml .Values.gpuRules | indent 6 }}
+    sinks:
+      metrics:
+        enabled: true
+        listenAddr: ":{{ .Values.metrics.port }}"
+      # 주의: 아래 webhook.secret 은 ConfigMap 평문 — 실제 secret 금지 (후속: Secret 주입)
+      webhook:
+{{ toYaml .Values.webhooks | indent 8 }}
+{{- end }}

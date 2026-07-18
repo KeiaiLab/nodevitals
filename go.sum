@@ -1,3 +1,5 @@
+github.com/NVIDIA/go-nvml v0.13.3-1 h1:P76U2h88OZSiMtdhRsJjSF5DXyXUqHIXKeDicVAaae0=
+github.com/NVIDIA/go-nvml v0.13.3-1/go.mod h1:ahi2psRYoa+wYUBIrZPRO+wJs9lcvMhxSSkjjvsJJNQ=
 github.com/anatol/smart.go v0.0.0-20260706181715-5cd61760b880 h1:YQ+JcHgQi/xNqaf7Xqy0dOV85GWOyqCdIfnxcTc643w=
 github.com/anatol/smart.go v0.0.0-20260706181715-5cd61760b880/go.mod h1:PrHdljtLe/VXVRH+zAJOcPjHkOHjF8/T2Arblruu/ac=
 github.com/anatol/vmtest v0.0.0-20260313235012-c2b0479898b4 h1:E9KSKETdT7YYxgOAWMRshWLoMF40nV53ZFTPskPXUTI=
