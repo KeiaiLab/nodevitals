@@ -1,9 +1,13 @@
-.PHONY: test vet fmt build docker chart-lint chart-test all build-gpu gpu-check scan sbom sign release
+.PHONY: test vet fmt build docker chart-lint chart-test all build-gpu gpu-check scan sbom release-verify
 
-# Supply chain (ADR-0002): local make-target release — trivy scan+SBOM, cosign keyless.
+# Supply chain (ADR-0002): scan/sbom/release-verify run locally, fail-closed.
+# Publishing + cosign signing is a documented maintainer runbook (ADR-0002),
+# NOT an auto-push target — a live registry push is irreversible and outward.
 IMG ?= ghcr.io/keiailab/nodevitals
-TAG ?= dev
-VERSION ?= $(shell awk '/^appVersion:/{gsub(/"/,"",$$2); print $$2}' deploy/chart/Chart.yaml)
+IMGREF ?= $(IMG):dev
+# appVersion, validated as semver so a malformed Chart.yaml value can never
+# become shell (it flows into recipe command lines).
+VERSION := $(shell awk '/^appVersion:/{gsub(/"/,"",$$2);print $$2}' deploy/chart/Chart.yaml | grep -E '^[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$$')
 
 test:
 	go test ./...
@@ -32,29 +36,25 @@ chart-lint:
 chart-test:
 	bash deploy/chart/tests/secret-isolation.sh
 
-# Fail the build on HIGH/CRITICAL CVEs (run `make docker` first).
+# Vuln-scan IMGREF, failing on HIGH/CRITICAL. Override IMGREF for the gpu image.
 scan:
-	trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --quiet $(IMG):$(TAG)
+	trivy image --scanners vuln --severity HIGH,CRITICAL --exit-code 1 --quiet "$(IMGREF)"
 
-# CycloneDX SBOM → dist/ (gitignored).
+# CycloneDX SBOM for IMGREF → dist/ (gitignored).
 sbom:
 	@mkdir -p dist
-	trivy image --format cyclonedx --quiet -o dist/sbom-$(VERSION).cdx.json $(IMG):$(TAG)
-	@echo "SBOM -> dist/sbom-$(VERSION).cdx.json"
+	trivy image --format cyclonedx --quiet -o "dist/sbom-$(VERSION).cdx.json" "$(IMGREF)"
+	@echo "SBOM -> dist/sbom-$(VERSION).cdx.json ($(IMGREF))"
 
-# cosign keyless-sign the PUSHED images (needs cosign + registry push + OIDC).
-sign:
-	cosign sign --yes $(IMG):$(VERSION)
-	cosign sign --yes $(IMG):$(VERSION)-gpu
-
-# Maintainer release on a v* tag: build (multi-arch static + amd64 gpu) -> push
-# -> scan -> sbom -> sign. Prereqs: ghcr.io login, cosign, and a docker-container
-# buildx driver for attestations (`docker buildx create --driver docker-container --use`).
-release:
-	docker buildx build --platform linux/amd64,linux/arm64 -t $(IMG):$(VERSION) --push .
-	docker buildx build --platform linux/amd64 --target gpu -t $(IMG):$(VERSION)-gpu --push .
-	$(MAKE) scan TAG=$(VERSION)
-	$(MAKE) sbom TAG=$(VERSION)
-	$(MAKE) sign
+# Fail-closed release gate — NO publish. Builds BOTH images and scans BOTH
+# before anything could leave the machine, then emits SBOMs. Publishing and
+# cosign-sign-BY-DIGEST are a separate maintainer step (ADR-0002); scanning
+# before any push is deliberate — a vulnerable image must never reach ghcr.io.
+release-verify: docker build-gpu
+	$(MAKE) scan IMGREF=$(IMG):dev
+	$(MAKE) scan IMGREF=$(IMG):dev-gpu
+	$(MAKE) sbom IMGREF=$(IMG):dev
+	$(MAKE) sbom IMGREF=$(IMG):dev-gpu
+	@echo "release-verify OK: both images scanned clean + SBOM'd. Publish per ADR-0002."
 
 all: fmt vet test build

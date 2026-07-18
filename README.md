@@ -171,14 +171,17 @@ is built for `linux/amd64` and `linux/arm64`; the GPU `:v-gpu` image is `linux/a
 
 ## Supply chain
 
-Releases are cut with local `make` targets (not CI — see [ADR-0002](docs/kb/adr/0002-supply-chain-and-release.md)):
+Supply-chain gates are local `make` targets (not CI — see [ADR-0002](docs/kb/adr/0002-supply-chain-and-release.md)):
 
 ```bash
-make scan        # trivy vuln scan — fails on HIGH/CRITICAL
-make sbom        # CycloneDX SBOM → dist/sbom-<version>.cdx.json
-make sign        # cosign keyless-sign the pushed images
-make release     # maintainer: build (multi-arch) → push → scan → sbom → sign
+make scan            # trivy vuln scan of $IMGREF — fails on HIGH/CRITICAL
+make sbom            # CycloneDX SBOM → dist/sbom-<version>.cdx.json
+make release-verify  # build both images, scan BOTH, emit SBOMs — fail-closed, no publish
 ```
+
+Publishing + cosign signing are a maintainer runbook (ADR-0002): `release-verify` scans
+**before** any push (a vulnerable image never reaches the registry), then the maintainer pushes
+and signs **by digest** (`cosign sign $IMG@sha256:...`, never a mutable tag).
 
 The distroless/static image carries no OS package surface: a `trivy` scan of the current build
 reports **0 HIGH/CRITICAL vulnerabilities** (debian-base 0, Go binary 0). The GPU image adds a
