@@ -41,3 +41,18 @@ func TestCPUUtilComputedFromDelta(t *testing.T) {
 		t.Fatalf("cpu_util_pct = %.2f, want ~50.0", *total)
 	}
 }
+
+func TestCPUSkipsOnCounterReset(t *testing.T) {
+	c := &cpuCollector{node: "n", procRoot: "../../testdata/proc2", prev: map[string]procfs.CPUStat{}}
+	if _, err := c.Collect(context.Background()); err != nil { // baseline from busier proc2
+		t.Fatalf("baseline: %v", err)
+	}
+	c.procRoot = "../../testdata/proc" // counters go BACKWARD (reset) → must skip, no samples
+	got, err := c.Collect(context.Background())
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("counter reset must emit no samples, got %+v", got)
+	}
+}

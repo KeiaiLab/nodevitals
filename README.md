@@ -14,11 +14,13 @@ backend, a **REST snapshot**, and a **Prometheus `/metrics`** endpoint. One bina
 Helm chart replace the `node_exporter` + `dcgm-exporter` + `smartctl_exporter` wiring.
 
 > [!NOTE]
-> **Status: early development (v0.1 — walking skeleton).** The full pipeline
-> (collect → event engine → webhook/REST/metrics → Helm) works end-to-end today, but the
-> collector set is currently minimal — CPU load average only. GPU (NVML + XID events),
-> disk SMART, and the remaining core collectors are landing next. See the
-> [design doc](docs/superpowers/specs/2026-07-17-nodevitals-design.md) for the full architecture.
+> **Status: early development (v0.2-dev).** The pipeline (collect → event engine →
+> webhook/REST/metrics → Helm) works end-to-end, and the **core tier is complete**:
+> load, CPU utilization, memory, disk I/O, per-interface network, and hwmon
+> temperature/fan sensors — all unprivileged. GPU (NVML + XID events) and disk SMART
+> tiers are landing next. See the
+> [design doc](docs/superpowers/specs/2026-07-17-nodevitals-design.md) and
+> [M2 design](docs/superpowers/specs/2026-07-18-nodevitals-m2-design.md) for the architecture.
 
 ## Why
 

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/prometheus/procfs/blockdevice"
 	"github.com/KeiaiLab/nodevitals/internal/model"
+	"github.com/prometheus/procfs/blockdevice"
 )
 
 type diskCollector struct {

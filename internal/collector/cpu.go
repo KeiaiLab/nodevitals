@@ -56,6 +56,9 @@ func (c *cpuCollector) Collect(ctx context.Context) ([]model.Sample, error) {
 		bNow, iNow := busyIdle(s)
 		bPrev, iPrev := busyIdle(p)
 		db, di := bNow-bPrev, iNow-iPrev
+		if db < 0 || di < 0 { // counter reset on either axis — skip this tick
+			continue
+		}
 		denom := db + di
 		if denom <= 0 {
 			continue

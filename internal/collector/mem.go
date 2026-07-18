@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/prometheus/procfs"
 	"github.com/KeiaiLab/nodevitals/internal/model"
+	"github.com/prometheus/procfs"
 )
 
 type memCollector struct {
