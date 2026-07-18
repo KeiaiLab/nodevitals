@@ -74,3 +74,31 @@ func TestMetricsUpdateReplacesSnapshot(t *testing.T) {
 		t.Fatalf("expected updated value 9:\n%s", string(raw))
 	}
 }
+
+func TestMetricsRecordDroppedExposesCounter(t *testing.T) {
+	m := NewMetrics()
+	m.RecordDropped("webhook-a", 3)
+	m.RecordDropped("webhook-a", 2) // accumulates → 5
+	m.RecordDropped("webhook-b", 1)
+	m.RecordDropped("webhook-b", 0) // no-op
+
+	srv := httptest.NewServer(m.Handler())
+	defer srv.Close()
+	resp, err := http.Get(srv.URL)
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	body := string(raw)
+
+	if !strings.Contains(body, "# TYPE nodevitals_delivery_dropped_total counter") {
+		t.Fatalf("dropped counter TYPE missing:\n%s", body)
+	}
+	if !strings.Contains(body, `nodevitals_delivery_dropped_total{sink="webhook-a"} 5`) {
+		t.Fatalf("want webhook-a dropped=5:\n%s", body)
+	}
+	if !strings.Contains(body, `nodevitals_delivery_dropped_total{sink="webhook-b"} 1`) {
+		t.Fatalf("want webhook-b dropped=1:\n%s", body)
+	}
+}

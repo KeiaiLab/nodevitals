@@ -15,12 +15,28 @@ type Metrics struct {
 	mu       sync.RWMutex
 	snapshot []model.Sample
 	reg      *prometheus.Registry
+	dropped  *prometheus.CounterVec
 }
 
 func NewMetrics() *Metrics {
-	m := &Metrics{reg: prometheus.NewRegistry()}
-	m.reg.MustRegister(m)
+	m := &Metrics{
+		reg: prometheus.NewRegistry(),
+		dropped: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "nodevitals_delivery_dropped_total",
+			Help: "events dropped after exhausting webhook delivery retries (silent-loss signal)",
+		}, []string{"sink"}),
+	}
+	m.reg.MustRegister(m, m.dropped)
 	return m
+}
+
+// RecordDropped increments the drop counter for a sink by n events. Called when
+// DeliverWithRetry exhausts its retries and the batch is lost, so operators can
+// alert on otherwise-silent delivery loss.
+func (m *Metrics) RecordDropped(sink string, n int) {
+	if n > 0 {
+		m.dropped.WithLabelValues(sink).Add(float64(n))
+	}
 }
 
 // Update replaces the exposed snapshot atomically.

@@ -2,7 +2,12 @@ package agent
 
 import (
 	"context"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +15,7 @@ import (
 	"github.com/KeiaiLab/nodevitals/internal/config"
 	"github.com/KeiaiLab/nodevitals/internal/event"
 	"github.com/KeiaiLab/nodevitals/internal/model"
+	"github.com/KeiaiLab/nodevitals/internal/queue"
 	"github.com/KeiaiLab/nodevitals/internal/sink"
 )
 
@@ -60,6 +66,38 @@ func TestTickNoEventWhenBelowThreshold(t *testing.T) {
 	a.Tick(context.Background())
 	if len(cap.events) != 0 {
 		t.Fatalf("want no events, got %+v", cap.events)
+	}
+}
+
+type failSink struct{}
+
+func (failSink) Name() string                                    { return "failing" }
+func (failSink) EmitEvents(context.Context, []model.Event) error { return errors.New("backend down") }
+
+// TestTickRecordsDroppedOnDeliveryFailure proves the delivery-durability floor:
+// when a webhook exhausts its retries and the event is lost, that loss is
+// surfaced as nodevitals_delivery_dropped_total rather than vanishing silently.
+func TestTickRecordsDroppedOnDeliveryFailure(t *testing.T) {
+	cfg := config.Config{Node: "n", Tier: "core",
+		Rules: []config.Rule{{Metric: "load1", Device: "cpu", Condition: "load_high", Severity: "warning", Threshold: 4, EnterFor: 1, ExitFor: 1}}}
+	var reg collector.Registry
+	reg.Add(fixedCollector{v: 9}) // breaches → 1 ENTER event to deliver
+	metrics := sink.NewMetrics()
+	a := New(cfg, &reg, event.NewEngine("n", cfg.Rules), []sink.Sink{failSink{}}, metrics)
+	a.backoff = queue.Backoff{} // zero backoff → retries are instant in the test
+
+	a.Tick(context.Background()) // delivery fails after retries → 1 dropped event
+
+	srv := httptest.NewServer(metrics.Handler())
+	defer srv.Close()
+	resp, err := http.Get(srv.URL)
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(raw), `nodevitals_delivery_dropped_total{sink="failing"} 1`) {
+		t.Fatalf("expected 1 dropped event for the failing sink:\n%s", string(raw))
 	}
 }
 

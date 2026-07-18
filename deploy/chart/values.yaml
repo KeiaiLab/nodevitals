@@ -63,6 +63,14 @@ webhooks: []
 metrics:
   port: 9847
 
+# Prometheus Operator discovery. Off by default (requires the ServiceMonitor
+# CRD). When enabled, renders a headless Service + ServiceMonitor so the
+# /metrics endpoint of every nodevitals pod is scraped out of the box.
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  labels: {}   # extra labels for your Prometheus' serviceMonitorSelector
+
 resources:
   requests:
     cpu: 20m
