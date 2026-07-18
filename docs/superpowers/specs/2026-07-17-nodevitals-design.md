@@ -1,7 +1,12 @@
 # nodevitals — 설계 스펙 (v0.1)
 
-> 상태: Draft · 작성 2026-07-17 · 브레인스토밍 산출물
+> **상태** Draft · 작성 2026-07-17, 갱신 2026-07-18 · **repo** <https://github.com/KeiaiLab/nodevitals>
 > 코드 식별자·스키마 필드·CLI 플래그는 영어, 서술은 한국어.
+
+**한눈에** — Kubernetes 노드의 심층 하드웨어 상태를 **단일 Go 에이전트**로 수집(core·GPU·SMART 3-tier)하고, **상태전이 이벤트**를 3표면 — webhook(CloudEvents 1.0 + Standard Webhooks HMAC) · REST 스냅샷 · Prometheus `/metrics` — 으로 전달한다. `node_exporter` + `dcgm-exporter` + `smartctl_exporter` 3-서비스 배선을 **에이전트 1개 + Helm 차트 1개**로 대체. 공개 소개는 [프로젝트 README](../../../README.md) 참조.
+
+> [!NOTE]
+> 이 문서는 v0.1 *설계 전체(비전)*를 기술한다. 현재 **구현 상태**는 walking skeleton — 파이프라인(collect → event → sink → Helm)은 end-to-end 완성이나 콜렉터는 loadavg 하나뿐이며 GPU/SMART tier·나머지 core 콜렉터는 후속 마일스톤이다.
 
 ---
 
@@ -61,32 +66,22 @@
 
 ## 4. 아키텍처 개요 — Tiered Single-Agent
 
+```mermaid
+flowchart TB
+    subgraph agent["nodevitals · 단일 Go 바이너리 (Helm 차트가 tier별 1~3 DaemonSet 렌더)"]
+        direction LR
+        Core["core tier<br/>무특권 · baseline-hardened<br/>cpu·mem·disk·net·hwmon"]
+        Gpu["gpu tier<br/>NVIDIA 디바이스 접근<br/>nvml-metrics·nvml-events(XID 구독)"]
+        Smart["smart tier<br/>특권 runAsUser:0<br/>smart·nvme-wear"]
+        Engine["event engine · 순수 함수<br/>상태전이 ENTER/EXIT<br/>+ 히스테리시스·임계 룰"]
+    end
+    Core & Gpu & Smart --> Engine
+    Core & Gpu & Smart -.->|samples| PROM["sink: metrics<br/>Prometheus /metrics"]
+    Core -.->|snapshot| REST["sink: rest<br/>GET /v1/state"]
+    Engine ==>|events| WH["sink: webhook<br/>고객 백엔드<br/>CloudEvents 1.0 + HMAC"]
 ```
-                    ┌──────────────────────── nodevitals (단일 Go 코드베이스/이미지) ────────────────────────┐
-                    │                                                                                        │
-  ┌── DaemonSet: tier=core ──┐   ┌── DaemonSet: tier=gpu ──┐   ┌── DaemonSet: tier=smart ──┐
-  │ (무특권, baseline-hardened)│   │ (NVIDIA 디바이스 접근)  │   │ (특권 runAsUser:0)        │
-  │  collectors:             │   │  collectors:            │   │  collectors:              │
-  │   cpu·mem·disk-usage     │   │   nvml-metrics          │   │   smart·nvme-wear         │
-  │   net·hwmon(sensors)     │   │   nvml-events(XID 구독) │   │                           │
-  └──────────┬───────────────┘   └───────────┬─────────────┘   └────────────┬──────────────┘
-             │                                │                              │
-             └────────────────┬───────────────┴──────────────────────────────┘
-                              ▼
-                      ┌─────────────────┐
-                      │  event engine   │  상태전이(ENTER/EXIT) + 히스테리시스/디바운스
-                      │  (순수 함수)    │  임계 룰 평가 → 이벤트 생성
-                      └───┬─────┬─────┬──┘
-                          │     │     │
-              ┌───────────┘     │     └────────────┐
-              ▼                 ▼                  ▼
-      ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-      │ sink:webhook │  │ sink:rest    │  │ sink:metrics │
-      │ (고객백엔드) │  │ (스냅샷조회) │  │ (Prometheus) │
-      │ CloudEvents  │  │ GET /v1/state│  │ /metrics     │
-      │ +HMAC 서명   │  │              │  │              │
-      └──────────────┘  └──────────────┘  └──────────────┘
-```
+
+> 흐름: 콜렉터 → **samples** → (metrics sink · REST 스냅샷) / **samples → event engine → events** → webhook sink. 즉 metrics·REST 는 샘플 스냅샷을, webhook 은 상태전이 이벤트를 운반한다.
 
 **핵심 결정 근거**: PSA(Pod Security Admission)는 **파드 단위** 평가다. SMART 는 커널상 `runAsUser:0 + CAP_SYS_RAWIO`(SATA) / `CAP_SYS_ADMIN`(NVMe) 를 요구하는데(비-root + `capabilities.add` 는 k8s#56374 로 무효, KEP-2763 ambient caps 는 2026-07 미구현), 코어와 SMART 를 한 파드에 묶으면 **전체가 특권으로 격상**돼 무특권 이점이 소각된다. 따라서 tier 별 DaemonSet 분리가 불가피하다 — 단 **단일 코드베이스·이미지·config 스키마·Helm 차트**가 `values.tiers.*` 로 이를 렌더링해 "통합" 을 유지한다.
 
