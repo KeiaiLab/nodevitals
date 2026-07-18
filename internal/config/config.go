@@ -44,6 +44,7 @@ type Config struct {
 	Tier            string      `yaml:"tier"`
 	IntervalSeconds int         `yaml:"intervalSeconds"`
 	ProcRoot        string      `yaml:"procRoot"`
+	SysRoot         string      `yaml:"sysRoot"`
 	Rules           []Rule      `yaml:"rules"`
 	Sinks           SinksConfig `yaml:"sinks"`
 }
@@ -68,6 +69,9 @@ func Load(path string) (Config, error) {
 	}
 	if c.ProcRoot == "" {
 		c.ProcRoot = "/proc"
+	}
+	if c.SysRoot == "" {
+		c.SysRoot = "/sys"
 	}
 	return c, nil
 }

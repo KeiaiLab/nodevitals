@@ -77,6 +77,9 @@ func TestLoadDefaultsProcRootAndInterval(t *testing.T) {
 	if c.ProcRoot != "/proc" {
 		t.Fatalf("procRoot default = %q, want /proc", c.ProcRoot)
 	}
+	if c.SysRoot != "/sys" {
+		t.Fatalf("sysRoot default = %q, want /sys", c.SysRoot)
+	}
 	if c.Interval() != 15*time.Second {
 		t.Fatalf("interval default = %v, want 15s", c.Interval())
 	}
