@@ -65,7 +65,7 @@
                     ┌──────────────────────── nodevitals (단일 Go 코드베이스/이미지) ────────────────────────┐
                     │                                                                                        │
   ┌── DaemonSet: tier=core ──┐   ┌── DaemonSet: tier=gpu ──┐   ┌── DaemonSet: tier=smart ──┐
-  │ (무특권, PSA restricted) │   │ (NVIDIA 디바이스 접근)  │   │ (특권 runAsUser:0)        │
+  │ (무특권, baseline-hardened)│   │ (NVIDIA 디바이스 접근)  │   │ (특권 runAsUser:0)        │
   │  collectors:             │   │  collectors:            │   │  collectors:              │
   │   cpu·mem·disk-usage     │   │   nvml-metrics          │   │   smart·nvme-wear         │
   │   net·hwmon(sensors)     │   │   nvml-events(XID 구독) │   │                           │
@@ -125,14 +125,14 @@ Sample {
 ### Event (상태전이)
 ```
 Event {
-  id         string        # 멱등 키 (안정 fingerprint)
+  id         string        # 배송 멱등 키 = fingerprint(node·tier·device·condition) + phase + seq → 전이마다 고유 (Webhook-Id/CloudEvents id). ENTER/EXIT 가 같은 id 를 갖지 않아야 수신측 dedup 이 EXIT 를 안 버림
   node       string
   tier       string
   device     string
   condition  string        # gpu_thermal_throttle, xid_error, smart_reallocated_surge, nvme_wearout, ...
   phase      string        # ENTER | EXIT
   severity   string        # info | warning | critical
-  seq        uint64        # 노드별 단조 증가 (갭 복구용)
+  seq        uint64        # 룰별 단조 증가 (ENTER→EXIT 짝·갭 복구용). fingerprint = condition 그룹핑 키(불변)
   started_at time.Time     # ENTER 시각
   ended_at   time.Time     # EXIT 시각 (EXIT phase 에만)
   detail     map[string]any # XID 코드, SMART 속성값, 온도 등
@@ -219,7 +219,7 @@ Event {
 
 - **tier 별 최소 권한**: core=무특권(hostNetwork/hostPID 불필요 — 이게 node_exporter 차트 기본값 대비 실측 우위) / gpu=디바이스 접근 / smart=특권 격리
 - SMART tier: `runAsUser:0` + `drop:[ALL]` + `add:[SYS_RAWIO, SYS_ADMIN]` + `readOnlyRootFilesystem` + `/dev` 전체 대신 특정 블록 디바이스 노드만
-- **정직한 표기**: "privileged 없는 SMART" 는 **거짓** (PSA baseline 허용 캡 13종에 SYS_RAWIO 없음). "PSA restricted 통과" 는 **core tier 한정** 주장 — 검증 후에만 카피에 사용
+- **정직한 표기**: "privileged 없는 SMART" 는 **거짓** (PSA baseline 허용 캡 13종에 SYS_RAWIO 없음). core tier 는 **"PSA restricted 통과" 가 아니라 "baseline-hardened"** 로 표기 (2026-07-18 whole-branch 리뷰 확정) — core DaemonSet 이 `hostPath: /proc` 를 마운트하는데 PSS **restricted** 프로파일의 Volume Types 컨트롤은 hostPath 를 금지하므로 restricted 네임스페이스는 이 파드를 거부한다. 즉 drop-ALL·readOnlyRootFS·no-host-namespace 로 restricted 에 *근접*하나 hostPath 때문에 restricted 자체는 아니다. 카피는 "baseline 초과 하드닝" 으로만.
 - 시크릿(webhook HMAC 키): k8s Secret 마운트, 평문 금지
 
 ---

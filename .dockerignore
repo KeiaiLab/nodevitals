@@ -1,0 +1,6 @@
+.git
+.venv
+dist/
+docs/
+*.md
+testdata/

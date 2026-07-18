@@ -1,0 +1,42 @@
+image:
+  repository: ghcr.io/nodevitals/nodevitals
+  tag: ""            # 기본은 Chart.appVersion
+  pullPolicy: IfNotPresent
+
+# tier 별 DaemonSet 렌더 토글. v0.1 은 core 만 구현.
+tiers:
+  core:
+    enabled: true
+  gpu:
+    enabled: false   # 후속 마일스톤
+  smart:
+    enabled: false   # 후속 마일스톤
+
+intervalSeconds: 15
+
+# 이벤트 룰 (기본 예시 — 사용자 override)
+rules:
+  - metric: load1
+    device: cpu
+    condition: load_high
+    severity: warning
+    threshold: 8.0
+    enterFor: 3
+    exitFor: 3
+
+# 고객 백엔드 webhook.
+# ⚠️ webhooks[].secret 을 여기 평문으로 두지 마시오 — 이 값은 ConfigMap 으로 렌더되어
+#    평문 노출됩니다. HMAC secret 의 Kubernetes Secret 주입은 후속 마일스톤입니다.
+webhooks: []
+#  - url: https://backend.example/hook
+#    secret: ""   # 후속: Secret 참조로 대체
+
+metrics:
+  port: 9847
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 32Mi
+  limits:
+    memory: 64Mi
