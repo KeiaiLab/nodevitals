@@ -81,6 +81,13 @@ func (c *smartCollector) Collect(ctx context.Context) ([]model.Sample, error) {
 				out = append(out, mk(a.metric, float64(v)))
 			}
 		}
+		if d.NVMe != nil {
+			out = append(out, mk("nvme_percentage_used", d.NVMe.PercentageUsed))
+			out = append(out, mk("nvme_available_spare", d.NVMe.AvailableSpare))
+			out = append(out, mk("nvme_available_spare_threshold", d.NVMe.SpareThreshold))
+			out = append(out, mk("nvme_media_errors", d.NVMe.MediaErrors))
+			out = append(out, mk("nvme_critical_warning", d.NVMe.CriticalWarning))
+		}
 	}
 	return out, nil
 }
