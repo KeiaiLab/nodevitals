@@ -198,6 +198,15 @@ Publishing + cosign signing are a maintainer runbook (ADR-0002): `release-verify
 **before** any push (a vulnerable image never reaches the registry), then the maintainer pushes
 and signs **by digest** (`cosign sign $IMG@sha256:...`, never a mutable tag).
 
+That runbook is executable as [`hack/release.sh`](hack/release.sh) — deliberately *not* a
+`make` target and never invoked by CI, so publishing stays an explicit maintainer action.
+Every step is idempotent: already-published images, signatures, and chart versions are
+skipped, so a re-run only does what is actually missing.
+
+```bash
+bash hack/release.sh   # versions are read from deploy/chart/Chart.yaml
+```
+
 The distroless/static image carries no OS package surface: a `trivy` scan of the current build
 reports **0 HIGH/CRITICAL vulnerabilities** (debian-base 0, Go binary 0). The GPU image adds a
 glibc (cc-debian12) base for the cgo/NVML binding.
