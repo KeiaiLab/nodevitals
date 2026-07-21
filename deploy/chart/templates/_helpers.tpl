@@ -102,6 +102,11 @@ ansible role writing SMART) drops .prom files into.
   mountPath: {{ . | quote }}
   readOnly: true
 {{- end }}
+{{- if .Values.nodeExporter.mountUdev }}
+- name: udev
+  mountPath: /run/udev
+  readOnly: true
+{{- end }}
 {{- end }}
 {{- end -}}
 
@@ -116,6 +121,12 @@ ansible role writing SMART) drops .prom files into.
 - name: textfile
   hostPath:
     path: {{ . | quote }}
+    type: DirectoryOrCreate
+{{- end }}
+{{- if .Values.nodeExporter.mountUdev }}
+- name: udev
+  hostPath:
+    path: /run/udev
     type: DirectoryOrCreate
 {{- end }}
 {{- end }}

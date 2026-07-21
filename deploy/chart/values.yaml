@@ -35,6 +35,11 @@ nodeExporter:
   mountRootFS: true
   # ansible textfile collector(node_smart_attr 등)가 쓰는 디렉터리. 비우면 미마운트.
   textfileDir: /var/lib/node_exporter/textfile_collector
+  # diskstats collector 는 /run/udev/data 에서 디바이스 속성(모델·시리얼·DM 이름)을
+  # 읽어 node_disk_device_mapper_info / node_disk_filesystem_info 를 만든다.
+  # 없으면 "Failed to open directory, disabling udev device properties" 를 한 줄
+  # 남기고 두 family 만 조용히 빠지므로, 기본으로 마운트한다.
+  mountUdev: true
   # collector 켜고 끄기 전용. --collector.* / --no-collector.* 만 허용되며 그 외는
   # 기동 실패한다 — 이 목록은 ConfigMap 에서 오고, --path.* 를 뒤에서 덮으면 모든
   # 수치가 호스트가 아니라 이 파드를 측정한 값으로 조용히 바뀐다.

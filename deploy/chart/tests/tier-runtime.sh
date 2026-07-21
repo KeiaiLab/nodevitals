@@ -121,6 +121,10 @@ printf '%s\n' "$NE" | grep -q 'textfile_collector' \
   || fail "textfile collector 디렉터리 마운트 누락 (node_smart_attr 소실)"
 printf '%s\n' "$NE" | grep -q 'rootfsPath: /host/root' \
   || fail "config 에 rootfsPath 가 전달되지 않음"
+# diskstats 는 /run/udev/data 에서 디바이스 속성을 읽어 device_mapper_info /
+# filesystem_info 를 만든다. 없으면 경고 한 줄만 남기고 두 family 가 빠진다.
+printf '%s\n' "$NE" | grep -q 'mountPath: /run/udev' \
+  || fail "udev 마운트 누락 — node_disk_*_info 2종이 조용히 빠진다"
 
 # 호스트 루트 마운트는 컨테이너에 호스트 파일시스템 전체 읽기를 준다. 끄면
 # 마운트와 rootfsPath 가 함께 사라져야 하고(권한 축소), 그 경우 에이전트가
@@ -132,7 +136,7 @@ printf '%s\n' "$NE_NOROOT" | grep -q 'rootfsPath' \
   && fail "mountRootFS=false 인데 rootfsPath 가 config 에 남아 filesystem collector 가 컨테이너를 잰다"
 
 OFF_NE="$(render --set singlePod=true)"
-for token in 'hostNetwork' '/host/root' 'textfile_collector' 'nodeExporter:'; do
+for token in 'hostNetwork' '/host/root' 'textfile_collector' '/run/udev' 'nodeExporter:'; do
   printf '%s\n' "$OFF_NE" | grep -q -- "$token" \
     && fail "nodeExporter 기본 off 인데 $token 이 렌더됐다"
 done
