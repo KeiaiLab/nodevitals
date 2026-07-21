@@ -16,6 +16,8 @@ spec:
       labels:
         app.kubernetes.io/name: nodevitals
         app.kubernetes.io/component: core
+      annotations:
+        {{- include "nodevitals.configChecksums" (dict "ctx" . "tier" "core") | nindent 8 }}
     spec:
       automountServiceAccountToken: false
       securityContext:

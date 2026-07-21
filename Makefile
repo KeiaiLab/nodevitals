@@ -35,6 +35,7 @@ chart-lint:
 
 chart-test:
 	bash deploy/chart/tests/secret-isolation.sh
+	bash deploy/chart/tests/tier-runtime.sh
 
 # Vuln-scan IMGREF, failing on HIGH/CRITICAL. Override IMGREF for the gpu image.
 scan:

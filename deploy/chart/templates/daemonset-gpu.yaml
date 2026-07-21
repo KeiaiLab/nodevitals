@@ -16,8 +16,13 @@ spec:
       labels:
         app.kubernetes.io/name: nodevitals
         app.kubernetes.io/component: gpu
+      annotations:
+        {{- include "nodevitals.configChecksums" (dict "ctx" . "tier" "gpu") | nindent 8 }}
     spec:
       automountServiceAccountToken: false
+      {{- with .Values.tiers.gpu.runtimeClassName }}
+      runtimeClassName: {{ . | quote }}
+      {{- end }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532

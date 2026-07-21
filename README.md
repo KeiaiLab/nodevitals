@@ -122,6 +122,28 @@ curl http://<pod-ip>:9847/metrics | grep nodevitals_hw_
 > is inherent to node-level hardware telemetry, not a hardening gap — see the
 > [production-readiness report](docs/production-readiness.md).
 
+### Tier runtime prerequisites
+
+The optional tiers each need one cluster-specific value. Both default to off so
+core stays a drop-in, and both fail *quietly* when they are needed but unset —
+so set them deliberately rather than waiting for a symptom:
+
+| Tier | Value | When you need it | Symptom if missing |
+|---|---|---|---|
+| gpu | `tiers.gpu.runtimeClassName` | The NVIDIA runtime is exposed as a RuntimeClass rather than the node default — the usual gpu-operator/k3s setup. Check `kubectl get runtimeclass`; the name is typically `nvidia`. | Pod CrashLoops with `nvml init: ERROR_LIBRARY_NOT_FOUND` — `NVIDIA_VISIBLE_DEVICES` alone does not trigger the runtime hook that injects `libnvidia-ml.so`. |
+| smart | `tiers.smart.privileged` | Always, to read real disks. The device cgroup denies a non-privileged container's `open()` on `/host/dev/*`, and `SYS_RAWIO`/`SYS_ADMIN` do not lift it. | **Silent**: the probe skips unreadable devices by design, so you get a healthy pod, `/healthz` ok, and zero `nodevitals_hw_smart_*` series. |
+
+```bash
+helm install nodevitals ./deploy/chart \
+  --set tiers.gpu.enabled=true   --set tiers.gpu.runtimeClassName=nvidia \
+  --set tiers.smart.enabled=true --set tiers.smart.privileged=true
+```
+
+Rules, thresholds, and webhook secrets are hashed into each DaemonSet's pod
+template, so editing them rolls the pods — the agent reads its config once at
+startup, and without that hash a `helm upgrade` would rewrite the ConfigMap and
+change nothing.
+
 Or run the binary directly against a config file:
 
 ```bash

@@ -4,14 +4,30 @@ image:
   gpuTag: ""         # 기본은 <Chart.appVersion>-gpu (glibc 변형)
   pullPolicy: IfNotPresent
 
-# tier 별 DaemonSet 렌더 토글. v0.1 은 core 만 구현.
+# tier 별 DaemonSet 렌더 토글 + tier 고유 런타임 설정.
 tiers:
   core:
     enabled: true
   gpu:
-    enabled: false   # 후속 마일스톤
+    enabled: false
+    # NVIDIA 컨테이너 런타임을 RuntimeClass 로 노출하는 클러스터(gpu-operator 기본,
+    # k3s 포함)에서는 이 값을 반드시 지정한다. 기본 런타임이 runc 이면
+    # NVIDIA_VISIBLE_DEVICES env 만으로는 nvidia-container-runtime hook 이 발동하지
+    # 않아 libnvidia-ml.so 가 주입되지 않고, 에이전트가
+    # "nvml init: ERROR_LIBRARY_NOT_FOUND" 로 CrashLoop 한다.
+    # 값 예: "nvidia" (kubectl get runtimeclass 로 실재 확인).
+    # 빈 문자열이면 클러스터 기본 런타임 사용.
+    runtimeClassName: ""
   smart:
-    enabled: false   # 후속 마일스톤
+    enabled: false
+    # SMART 조회는 /host/dev 의 블록 디바이스 노드를 직접 open 한다. 디바이스
+    # cgroup allowlist 가 비-privileged 컨테이너의 이 open 을 EPERM 으로 막으며
+    # SYS_RAWIO/SYS_ADMIN capability 로는 우회되지 않는다. probeDevice 는 open
+    # 실패를 조용히 skip 하도록 설계돼 있어, 이 값이 false 면 에러 없이 디바이스
+    # 0개 = 시리즈 0 이 된다(무증상 실패). 실제 디스크 건강을 수집하려면 true.
+    # smartctl_exporter 등 동종 exporter 와 동일한 요구사항이며, 네임스페이스는
+    # PodSecurity privileged 를 허용해야 한다.
+    privileged: false
 
 intervalSeconds: 15
 

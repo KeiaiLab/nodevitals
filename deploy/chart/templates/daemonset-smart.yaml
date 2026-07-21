@@ -16,6 +16,8 @@ spec:
       labels:
         app.kubernetes.io/name: nodevitals
         app.kubernetes.io/component: smart
+      annotations:
+        {{- include "nodevitals.configChecksums" (dict "ctx" . "tier" "smart") | nindent 8 }}
     spec:
       automountServiceAccountToken: false
       containers:
@@ -35,7 +37,14 @@ spec:
           securityContext:
             runAsUser: 0
             runAsNonRoot: false
+            {{- if .Values.tiers.smart.privileged }}
+            privileged: true
+            # privileged 와 allowPrivilegeEscalation:false 는 API validation 상충 —
+            # privileged 를 켤 때는 반드시 함께 true.
+            allowPrivilegeEscalation: true
+            {{- else }}
             allowPrivilegeEscalation: false
+            {{- end }}
             readOnlyRootFilesystem: true
             seccompProfile:
               type: RuntimeDefault

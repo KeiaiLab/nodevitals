@@ -36,3 +36,24 @@ Empty when no webhook has a secret.
 {{- end }}
 {{- end }}
 {{- end -}}
+
+{{/*
+Pod-template annotations that roll a tier's DaemonSet when its config changes.
+
+The agent reads /etc/nodevitals/config.yaml once at startup and never re-reads
+it, and a webhook secret is resolved through env at the same moment. Without
+these checksums a `helm upgrade` that only edits rules, thresholds, or a
+signing secret rewrites the ConfigMap/Secret but leaves the pod template
+untouched — so no rollout happens and the change is silently ignored with no
+error anywhere. Hashing the rendered ConfigMap and Secret into the template
+makes the content part of the pod spec, so any edit triggers a normal rolling
+restart.
+
+Call with (dict "ctx" . "tier" "<core|smart|gpu>").
+*/}}
+{{- define "nodevitals.configChecksums" -}}
+{{- $ctx := .ctx -}}
+{{- $suffix := ternary "" (printf "-%s" .tier) (eq .tier "core") -}}
+checksum/config: {{ include (print $ctx.Template.BasePath "/configmap" $suffix ".yaml") $ctx | sha256sum }}
+checksum/webhook-secret: {{ include (print $ctx.Template.BasePath "/secret.yaml") $ctx | sha256sum }}
+{{- end -}}
