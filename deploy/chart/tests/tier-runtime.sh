@@ -135,6 +135,15 @@ printf '%s\n' "$NE_NOROOT" | grep -q '/host/root' \
 printf '%s\n' "$NE_NOROOT" | grep -q 'rootfsPath' \
   && fail "mountRootFS=false 인데 rootfsPath 가 config 에 남아 filesystem collector 가 컨테이너를 잰다"
 
+# appVersion 은 실제로 발행된 이미지 태그여야 한다. 차트만 고치면서 appVersion
+# 까지 올리면 존재하지 않는 태그를 가리켜 ImagePullBackOff 가 난다(라이브 사고
+# 2026-07-22: 차트 0.4.1 이 미발행 이미지 0.4.1 을 참조). 발행 여부는 네트워크
+# 없이 알 수 없으므로, 최소한 "appVersion 을 바꿀 때 의도했는지" 를 눈에 띄게
+# 만든다 — 이미지 태그가 appVersion 을 그대로 따르는지 고정한다.
+APPV="$(awk '/^appVersion:/{gsub(/"/,"",$2); print $2}' "$CHART/Chart.yaml")"
+printf '%s\n' "$(render)" | grep -q "image: \"ghcr.io/keiailab/nodevitals:${APPV}\"" \
+  || fail "렌더된 이미지 태그가 appVersion($APPV) 과 다르다 — 발행되지 않은 태그를 가리킬 위험"
+
 OFF_NE="$(render --set singlePod=true)"
 for token in 'hostNetwork' '/host/root' 'textfile_collector' '/run/udev' 'nodeExporter:'; do
   printf '%s\n' "$OFF_NE" | grep -q -- "$token" \
