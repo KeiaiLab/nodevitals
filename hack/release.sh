@@ -45,12 +45,12 @@ step "1/5 registry login"
 gh auth token | docker login ghcr.io -u "$GH_USER" --password-stdin
 gh auth token | helm registry login ghcr.io -u "$GH_USER" --password-stdin
 
-step "2/5 images ($APP_VER, $APP_VER-gpu)"
+step "2/5 image ($APP_VER)"
 if docker buildx imagetools inspect "$IMG:$APP_VER" >/dev/null 2>&1; then
 	skip "$IMG:$APP_VER already published"
 else
-	# Fail-closed: both images are built and scanned before any push. A
-	# vulnerable image must never reach ghcr.io (ADR-0002).
+	# Fail-closed: the image is built and scanned before any push. A vulnerable
+	# image must never reach ghcr.io (ADR-0002).
 	make release-verify
 
 	if docker buildx inspect nodevitals-release >/dev/null 2>&1; then
@@ -59,29 +59,28 @@ else
 		docker buildx create --name nodevitals-release --driver docker-container --use
 	fi
 
-	# Static image is multi-arch (ADR-0001 arm64 OSS exception); the gpu image
-	# is amd64-only because go-nvml needs cgo.
-	docker buildx build --platform linux/amd64,linux/arm64 \
+	# One image for every tier. It is cgo/glibc because the gpu tier's NVML
+	# binding needs cgo, and NVML is dlopen'd at runtime so the same image runs
+	# on GPU-less nodes. cgo also means amd64 only — a cross-built arm64 cgo
+	# image would need a full cross toolchain for no current consumer.
+	docker buildx build --platform linux/amd64 \
 		--provenance=true --sbom=true -t "$IMG:$APP_VER" --push .
-	docker buildx build --target gpu --platform linux/amd64 \
-		--provenance=true --sbom=true -t "$IMG:$APP_VER-gpu" --push .
-	ok "images pushed"
+	ok "image pushed"
 fi
 
 step "3/5 cosign signatures (by digest, never by mutable tag)"
 DIG=$(docker buildx imagetools inspect "$IMG:$APP_VER" --format '{{.Manifest.Digest}}')
-DIG_GPU=$(docker buildx imagetools inspect "$IMG:$APP_VER-gpu" --format '{{.Manifest.Digest}}')
 verify_one() {
 	cosign verify "$1" --certificate-identity-regexp='.+' \
 		--certificate-oidc-issuer-regexp='.+' >/dev/null 2>&1
 }
-if verify_one "$IMG@$DIG" && verify_one "$IMG@$DIG_GPU"; then
-	skip "both digests already signed"
+if verify_one "$IMG@$DIG"; then
+	skip "digest already signed"
 else
 	echo "    a browser window opens for keyless OIDC — authenticate promptly,"
 	echo "    the sigstore code expires within seconds."
-	cosign sign --yes "$IMG@$DIG" "$IMG@$DIG_GPU"
-	verify_one "$IMG@$DIG" && verify_one "$IMG@$DIG_GPU"
+	cosign sign --yes "$IMG@$DIG"
+	verify_one "$IMG@$DIG"
 	ok "signed and verified"
 fi
 
@@ -118,8 +117,7 @@ check_public charts/nodevitals
 
 step "summary"
 cat <<EOF
-    image  $IMG:$APP_VER      @ $DIG
-    gpu    $IMG:$APP_VER-gpu  @ $DIG_GPU
+    image  $IMG:$APP_VER  @ $DIG
     chart  oci://ghcr.io/keiailab/charts/nodevitals:$CHART_VER
 
 Next, outside this script:

@@ -1,7 +1,6 @@
 image:
   repository: ghcr.io/keiailab/nodevitals
   tag: ""            # 기본은 Chart.appVersion
-  gpuTag: ""         # 기본은 <Chart.appVersion>-gpu (glibc 변형)
   pullPolicy: IfNotPresent
 
 # 활성 tier 를 DaemonSet 하나로 합쳐 노드당 파드 1개로 배치한다. false 면

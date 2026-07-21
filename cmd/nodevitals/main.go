@@ -45,6 +45,8 @@ func main() {
 			reg.Add(collector.NewNet(cfg.Node, cfg.ProcRoot))
 			reg.Add(collector.NewDisk(cfg.Node, cfg.ProcRoot, cfg.SysRoot))
 			reg.Add(collector.NewHwmon(cfg.Node, cfg.SysRoot))
+			reg.Add(collector.NewPSI(cfg.Node, cfg.ProcRoot))
+			reg.Add(collector.NewPower(cfg.Node, cfg.SysRoot))
 		case "smart":
 			reg.Add(collector.NewSmart(cfg.Node, collector.NewDevProbe(cfg.DevRoot)))
 		case "gpu":

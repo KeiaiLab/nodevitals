@@ -50,19 +50,6 @@ keeps the rendered config (and therefore its checksum) stable across upgrades.
 {{- end -}}
 
 {{/*
-Image for the single-pod DaemonSet. The gpu build is the superset — it is the
-only one linked against NVML — so any layout that includes the gpu tier must
-use it, and core/smart behave identically there.
-*/}}
-{{- define "nodevitals.singlePodImage" -}}
-{{- if .Values.tiers.gpu.enabled -}}
-{{ .Values.image.repository }}:{{ .Values.image.gpuTag | default (printf "%s-gpu" .Chart.AppVersion) }}
-{{- else -}}
-{{ include "nodevitals.image" . }}
-{{- end -}}
-{{- end -}}
-
-{{/*
 Pod-template annotations that roll a tier's DaemonSet when its config changes.
 
 The agent reads /etc/nodevitals/config.yaml once at startup and never re-reads

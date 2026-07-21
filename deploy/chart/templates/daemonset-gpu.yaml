@@ -36,7 +36,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: nodevitals
-          image: "{{ .Values.image.repository }}:{{ .Values.image.gpuTag | default (printf "%s-gpu" .Chart.AppVersion) }}"
+          image: {{ include "nodevitals.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["-config", "/etc/nodevitals/config.yaml"]
           env:

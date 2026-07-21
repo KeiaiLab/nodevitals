@@ -28,14 +28,14 @@ backend, a **REST snapshot**, and a **Prometheus `/metrics`** endpoint. One bina
 Helm chart replace the `node_exporter` + `dcgm-exporter` + `smartctl_exporter` wiring.
 
 > [!NOTE]
-> **Status: early development (v0.2-dev).** The pipeline (collect → event engine →
+> **Status: early development (v0.3-dev).** The pipeline (collect → event engine →
 > webhook/REST/metrics → Helm) works end-to-end, and all three tiers are implemented:
-> **core** (load, CPU, memory, disk I/O, network, hwmon — unprivileged), **SMART**
-> (SATA/NVMe disk health via a privileged, opt-in DaemonSet), and **GPU** (NVIDIA
-> NVML metrics + async XID error events via an unprivileged, opt-in DaemonSet,
-> shipped as a separate glibc/cgo `:v-gpu` image since the go-nvml binding needs
-> cgo while core/smart stay static). The GPU tier's NVML path is unit- and
-> compile-checked without hardware — a real-GPU smoke test is still pending. See
+> **core** (load, CPU, memory, disk I/O, network, hwmon, PSI pressure, RAPL power —
+> unprivileged), **SMART** (SATA/NVMe disk health, needs device access), and **GPU**
+> (NVIDIA NVML metrics + async XID error events, opt-in). **One image serves every
+> tier**: it is cgo/glibc because the go-nvml binding needs cgo, but NVML is
+> `dlopen`'d at runtime, so the same image runs unchanged on nodes with no GPU —
+> the agent logs that it is skipping the gpu tier and collects everything else. See
 > the [design doc](docs/superpowers/specs/2026-07-17-nodevitals-design.md),
 > [M2 design](docs/superpowers/specs/2026-07-18-nodevitals-m2-design.md), and
 > [M2b GPU design](docs/superpowers/specs/2026-07-18-nodevitals-m2b-gpu-design.md).
@@ -226,14 +226,14 @@ can verify them.
 
 ```bash
 make all         # go vet + go test + build
-make docker      # build the distroless/static image (~22 MB) — core & smart tiers
-make build-gpu   # build the glibc :v-gpu image (GPU tier — go-nvml needs cgo)
+make docker      # build the image (distroless/cc, cgo) — serves every tier
 make chart-lint  # helm template | kubeconform
 ```
 
-Requirements: Go 1.26+, and (for the chart) Helm 3 + kubeconform. The core/smart static image
-is built for `linux/amd64` and `linux/arm64`; the GPU `:v-gpu` image is `linux/amd64`-only
-(the go-nvml binding needs cgo, and arm64 GPU support is deferred).
+Requirements: Go 1.26+, and (for the chart) Helm 3 + kubeconform. There is one
+image for all tiers, built for `linux/amd64`. It is cgo/glibc rather than static
+because the gpu tier's go-nvml binding needs cgo; that also makes arm64 a cross
+-toolchain problem with no current consumer, so arm64 is deferred.
 
 ## Supply chain
 

@@ -1,4 +1,4 @@
-.PHONY: test vet fmt build docker chart-lint chart-test all build-gpu gpu-check scan sbom release-verify
+.PHONY: test vet fmt build docker chart-lint chart-test all gpu-check scan sbom release-verify
 
 # Supply chain (ADR-0002): scan/sbom/release-verify run locally, fail-closed.
 # Publishing + cosign signing is a documented maintainer runbook (ADR-0002),
@@ -22,10 +22,7 @@ build:
 	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o dist/nodevitals ./cmd/nodevitals
 
 docker:
-	docker build -t ghcr.io/keiailab/nodevitals:dev .
-
-build-gpu:
-	docker build --platform=linux/amd64 --target gpu -t ghcr.io/keiailab/nodevitals:dev-gpu .
+	docker build --platform=linux/amd64 -t ghcr.io/keiailab/nodevitals:dev .
 
 gpu-check:
 	docker run --rm --platform=linux/amd64 -v "$$PWD":/src -w /src golang:1.26-bookworm sh -c 'CGO_ENABLED=1 go build -tags gpu ./...'
@@ -51,11 +48,9 @@ sbom:
 # before anything could leave the machine, then emits SBOMs. Publishing and
 # cosign-sign-BY-DIGEST are a separate maintainer step (ADR-0002); scanning
 # before any push is deliberate — a vulnerable image must never reach ghcr.io.
-release-verify: docker build-gpu
+release-verify: docker
 	$(MAKE) scan IMGREF=$(IMG):dev
-	$(MAKE) scan IMGREF=$(IMG):dev-gpu
 	$(MAKE) sbom IMGREF=$(IMG):dev
-	$(MAKE) sbom IMGREF=$(IMG):dev-gpu
-	@echo "release-verify OK: both images scanned clean + SBOM'd. Publish per ADR-0002."
+	@echo "release-verify OK: image scanned clean + SBOM'd. Publish per ADR-0002."
 
 all: fmt vet test build

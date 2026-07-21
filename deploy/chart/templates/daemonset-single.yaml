@@ -51,7 +51,7 @@ spec:
       {{- end }}
       containers:
         - name: nodevitals
-          image: {{ include "nodevitals.singlePodImage" . | quote }}
+          image: {{ include "nodevitals.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["-config", "/etc/nodevitals/config.yaml"]
           env:

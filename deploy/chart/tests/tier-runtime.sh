@@ -85,10 +85,10 @@ cm=$(printf '%s\n' "$SINGLE" | grep -c '^kind: ConfigMap' || true)
 
 printf '%s\n' "$SINGLE" | grep -q 'tiers: \[core, smart, gpu\]' \
   || fail "singlePod config must list every enabled tier"
-# The agent is only linked against NVML in the gpu build, so a combined pod
-# that includes gpu must not fall back to the static image.
-printf '%s\n' "$SINGLE" | grep -q 'image: "ghcr.io/keiailab/nodevitals:.*-gpu"' \
-  || fail "singlePod with gpu enabled must use the gpu (NVML-linked) image"
+# One image serves every tier — a reintroduced `-gpu` variant would put an
+# operator back to picking between artifacts, and split the signing surface.
+printf '%s\n' "$SINGLE" | grep -q -- '-gpu"' \
+  && fail "there is one image for all tiers; no -gpu variant should be referenced"
 for path in /proc /sys /dev; do
   printf '%s\n' "$SINGLE" | grep -q "path: $path$" \
     || fail "singlePod is missing the $path hostPath needed by an enabled tier"
