@@ -1,4 +1,4 @@
-{{- if .Values.tiers.smart.enabled }}
+{{- if and (not .Values.singlePod) .Values.tiers.smart.enabled }}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:

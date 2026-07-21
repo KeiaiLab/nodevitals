@@ -1,4 +1,4 @@
-{{- if .Values.tiers.core.enabled }}
+{{- if and (not .Values.singlePod) .Values.tiers.core.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

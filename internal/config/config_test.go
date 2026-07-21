@@ -141,3 +141,49 @@ sinks:
 		t.Fatal("Load should fail closed when a ${VAR} webhook secret resolves empty, got nil error")
 	}
 }
+
+func TestResolvedTiersFallsBackToLegacyScalarThenCore(t *testing.T) {
+	// A config that predates the list form must keep running exactly one tier,
+	// and an empty config must not silently run nothing.
+	for _, tc := range []struct {
+		name string
+		cfg  Config
+		want []string
+	}{
+		{"legacy scalar", Config{Tier: "smart"}, []string{"smart"}},
+		{"empty", Config{}, []string{"core"}},
+		{"list wins over scalar", Config{Tier: "core", Tiers: []string{"gpu"}}, []string{"gpu"}},
+		{"list order preserved", Config{Tiers: []string{"gpu", "core", "smart"}}, []string{"gpu", "core", "smart"}},
+		{"duplicates collapse", Config{Tiers: []string{"core", "core", "smart"}}, []string{"core", "smart"}},
+		{"blank entries dropped", Config{Tiers: []string{"", "smart", ""}}, []string{"smart"}},
+		{"all blank falls back", Config{Tiers: []string{"", ""}}, []string{"core"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.cfg.ResolvedTiers()
+			if len(got) != len(tc.want) {
+				t.Fatalf("ResolvedTiers() = %v, want %v", got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("ResolvedTiers() = %v, want %v", got, tc.want)
+				}
+			}
+		})
+	}
+}
+
+func TestLoadParsesTiersList(t *testing.T) {
+	// The single-pod layout is only reachable if the list survives YAML load.
+	dir := t.TempDir()
+	p := filepath.Join(dir, "c.yaml")
+	if err := os.WriteFile(p, []byte("tiers: [core, smart, gpu]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.ResolvedTiers(); len(got) != 3 || got[0] != "core" || got[2] != "gpu" {
+		t.Fatalf("ResolvedTiers() = %v, want [core smart gpu]", got)
+	}
+}

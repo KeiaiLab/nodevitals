@@ -70,4 +70,39 @@ done
         --set "webhooks[0].url=https://a.example/h" --set "webhooks[0].secret=s2")" ] \
   || fail "rotating a webhook secret did not change checksum/webhook-secret"
 
-echo "PASS: gpu runtimeClass + smart privileged opt-in (inert by default), config/secret checksums roll all 3 tiers"
+# 4. singlePod collapses the per-tier DaemonSets into one pod per node. The
+#    tier label lives on the sample, not the config, so the metric surface is
+#    unchanged — what must hold here is that the one pod actually carries every
+#    enabled tier's rules, mounts, and runtime requirements.
+SINGLE="$(render --set singlePod=true --set tiers.gpu.enabled=true \
+  --set tiers.smart.enabled=true --set tiers.smart.privileged=true \
+  --set tiers.gpu.runtimeClassName=nvidia)"
+
+ds=$(printf '%s\n' "$SINGLE" | grep -c '^kind: DaemonSet' || true)
+[ "$ds" -eq 1 ] || fail "singlePod must render exactly 1 DaemonSet, got $ds"
+cm=$(printf '%s\n' "$SINGLE" | grep -c '^kind: ConfigMap' || true)
+[ "$cm" -eq 1 ] || fail "singlePod must render exactly 1 ConfigMap, got $cm"
+
+printf '%s\n' "$SINGLE" | grep -q 'tiers: \[core, smart, gpu\]' \
+  || fail "singlePod config must list every enabled tier"
+# The agent is only linked against NVML in the gpu build, so a combined pod
+# that includes gpu must not fall back to the static image.
+printf '%s\n' "$SINGLE" | grep -q 'image: "ghcr.io/keiailab/nodevitals:.*-gpu"' \
+  || fail "singlePod with gpu enabled must use the gpu (NVML-linked) image"
+for path in /proc /sys /dev; do
+  printf '%s\n' "$SINGLE" | grep -q "path: $path$" \
+    || fail "singlePod is missing the $path hostPath needed by an enabled tier"
+done
+for m in load1 smart_pending_sectors gpu_temperature_celsius; do
+  printf '%s\n' "$SINGLE" | grep -q "metric: $m" \
+    || fail "singlePod config dropped the $m rule"
+done
+# core/smart on a mixed fleet must not be pinned to GPU nodes; the agent skips
+# the gpu collector where NVML is absent.
+printf '%s\n' "$SINGLE" | grep -q 'nvidia.com/gpu.present' \
+  && fail "singlePod with core enabled must not nodeSelector onto GPU nodes"
+GPUONLY="$(render --set singlePod=true --set tiers.core.enabled=false --set tiers.gpu.enabled=true)"
+printf '%s\n' "$GPUONLY" | grep -q 'nvidia.com/gpu.present' \
+  || fail "gpu-only singlePod should still pin to GPU nodes"
+
+echo "PASS: gpu runtimeClass + smart privileged opt-in (inert by default), config/secret checksums roll all 3 tiers, singlePod merges tiers into 1 DaemonSet"

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -33,24 +34,40 @@ func main() {
 		cfg.Node = os.Getenv("NODE_NAME") // downward API
 	}
 
+	tiers := cfg.ResolvedTiers()
 	var reg collector.Registry
-	switch cfg.Tier {
-	case "smart":
-		reg.Add(collector.NewSmart(cfg.Node, collector.NewDevProbe(cfg.DevRoot)))
-	case "gpu":
-		r, err := collector.NewNVMLReader()
-		if err != nil {
-			slog.Error("gpu reader init", "err", err)
+	for _, tier := range tiers {
+		switch tier {
+		case "core":
+			reg.Add(collector.NewLoadAvg(cfg.Node, cfg.ProcRoot))
+			reg.Add(collector.NewCPU(cfg.Node, cfg.ProcRoot))
+			reg.Add(collector.NewMem(cfg.Node, cfg.ProcRoot))
+			reg.Add(collector.NewNet(cfg.Node, cfg.ProcRoot))
+			reg.Add(collector.NewDisk(cfg.Node, cfg.ProcRoot, cfg.SysRoot))
+			reg.Add(collector.NewHwmon(cfg.Node, cfg.SysRoot))
+		case "smart":
+			reg.Add(collector.NewSmart(cfg.Node, collector.NewDevProbe(cfg.DevRoot)))
+		case "gpu":
+			r, err := collector.NewNVMLReader()
+			if err != nil {
+				// Running gpu alone means the operator asked for GPU telemetry
+				// and nothing else, so a dead NVML is a hard failure and the
+				// CrashLoop is the signal. Running it alongside other tiers is
+				// the single-pod layout, where the same DaemonSet covers a
+				// mixed fleet — a node without a GPU must still deliver core
+				// and smart, so drop just this collector.
+				if len(tiers) == 1 {
+					slog.Error("gpu reader init", "err", err)
+					os.Exit(1)
+				}
+				slog.Warn("gpu reader init failed — skipping gpu tier", "err", err)
+				continue
+			}
+			reg.Add(collector.NewGPUCollector(cfg.Node, r))
+		default:
+			slog.Error("unknown tier", "tier", tier, "known", "core, smart, gpu")
 			os.Exit(1)
 		}
-		reg.Add(collector.NewGPUCollector(cfg.Node, r))
-	default: // "core"
-		reg.Add(collector.NewLoadAvg(cfg.Node, cfg.ProcRoot))
-		reg.Add(collector.NewCPU(cfg.Node, cfg.ProcRoot))
-		reg.Add(collector.NewMem(cfg.Node, cfg.ProcRoot))
-		reg.Add(collector.NewNet(cfg.Node, cfg.ProcRoot))
-		reg.Add(collector.NewDisk(cfg.Node, cfg.ProcRoot, cfg.SysRoot))
-		reg.Add(collector.NewHwmon(cfg.Node, cfg.SysRoot))
 	}
 
 	eng := event.NewEngine(cfg.Node, cfg.Rules)
@@ -83,7 +100,7 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	slog.Info("nodevitals started", "node", cfg.Node, "tier", cfg.Tier, "listen", listen)
+	slog.Info("nodevitals started", "node", cfg.Node, "tiers", strings.Join(tiers, ","), "listen", listen)
 	a.Run(ctx)
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

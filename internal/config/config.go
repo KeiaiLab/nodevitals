@@ -41,14 +41,47 @@ type SinksConfig struct {
 
 // Config is the nodevitals agent configuration.
 type Config struct {
-	Node            string      `yaml:"node"`
-	Tier            string      `yaml:"tier"`
+	Node string `yaml:"node"`
+	// Tier names one collector tier. Superseded by Tiers; kept so existing
+	// single-tier configs keep loading unchanged.
+	Tier string `yaml:"tier"`
+	// Tiers names every collector tier this process runs. Listing more than
+	// one collapses what would otherwise be several DaemonSets into a single
+	// pod per node; the tier label on each sample comes from the collector
+	// that produced it, so metrics are identical either way.
+	Tiers           []string    `yaml:"tiers"`
 	IntervalSeconds int         `yaml:"intervalSeconds"`
 	ProcRoot        string      `yaml:"procRoot"`
 	SysRoot         string      `yaml:"sysRoot"`
 	DevRoot         string      `yaml:"devRoot"`
 	Rules           []Rule      `yaml:"rules"`
 	Sinks           SinksConfig `yaml:"sinks"`
+}
+
+// ResolvedTiers returns the tiers to run, in config order and de-duplicated.
+// Tiers wins; otherwise the legacy scalar Tier is a one-element list; an empty
+// config means core.
+func (c Config) ResolvedTiers() []string {
+	src := c.Tiers
+	if len(src) == 0 {
+		if c.Tier == "" {
+			return []string{"core"}
+		}
+		src = []string{c.Tier}
+	}
+	seen := make(map[string]bool, len(src))
+	out := make([]string, 0, len(src))
+	for _, t := range src {
+		if t == "" || seen[t] {
+			continue
+		}
+		seen[t] = true
+		out = append(out, t)
+	}
+	if len(out) == 0 {
+		return []string{"core"}
+	}
+	return out
 }
 
 // Interval returns the collection interval, defaulting to 15s.

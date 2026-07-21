@@ -139,6 +139,35 @@ helm install nodevitals ./deploy/chart \
   --set tiers.smart.enabled=true --set tiers.smart.privileged=true
 ```
 
+### One pod per node, or one per tier
+
+By default each enabled tier gets its own DaemonSet, so a node runs as many
+pods as it has tiers. `singlePod: true` collapses them into a single DaemonSet
+— one pod, one process, every enabled collector:
+
+```bash
+helm install nodevitals ./deploy/chart --set singlePod=true \
+  --set tiers.smart.enabled=true --set tiers.smart.privileged=true \
+  --set tiers.gpu.enabled=true   --set tiers.gpu.runtimeClassName=nvidia
+# 10 nodes: 3 DaemonSets / 30 pods  ->  1 DaemonSet / 10 pods
+```
+
+The metric surface is identical either way — the `tier` label is set by the
+collector that produced the sample, not by which pod it ran in — and the merged
+pod exposes one `/metrics` and one `/v1/state` covering all tiers.
+
+What you trade for it:
+
+- **One container means one `securityContext`.** With smart enabled, `/proc`
+  and `/sys` collection runs as root (and privileged) too. Keep `singlePod`
+  off where core's unprivileged posture matters.
+- **`runtimeClassName` is pod-level**, so with gpu enabled the whole pod runs
+  under the NVIDIA runtime — harmless for the other tiers, but it means the
+  gpu image (the NVML-linked build) is used for everything.
+- **Mixed fleets are fine.** A node without a GPU logs `gpu reader init failed
+  — skipping gpu tier` and keeps serving core/smart. Only a *gpu-only* pod
+  still fails hard, and only that layout pins itself to GPU nodes.
+
 Rules, thresholds, and webhook secrets are hashed into each DaemonSet's pod
 template, so editing them rolls the pods — the agent reads its config once at
 startup, and without that hash a `helm upgrade` would rewrite the ConfigMap and

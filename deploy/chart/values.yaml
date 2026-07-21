@@ -4,7 +4,17 @@ image:
   gpuTag: ""         # 기본은 <Chart.appVersion>-gpu (glibc 변형)
   pullPolicy: IfNotPresent
 
-# tier 별 DaemonSet 렌더 토글 + tier 고유 런타임 설정.
+# 활성 tier 를 DaemonSet 하나로 합쳐 노드당 파드 1개로 배치한다. false 면
+# tier 마다 DaemonSet 을 따로 띄운다(노드당 tier 수만큼 파드).
+#
+# 합치면 컨테이너가 하나뿐이라 securityContext 도 하나다 — smart 를 함께 켜면
+# /proc·/sys 수집까지 root(+privileged)로 올라가므로, core 의 unprivileged 를
+# 지켜야 하는 환경에서는 false 를 유지한다. gpu 를 함께 켜면 이미지는 NVML 이
+# 링크된 gpu 변형으로 통일되고, GPU 가 없는 노드에서는 gpu collector 만
+# 건너뛴다(에이전트가 경고 후 계속 — 다른 tier 는 정상 수집).
+singlePod: false
+
+# tier 별 렌더 토글 + tier 고유 런타임 설정.
 tiers:
   core:
     enabled: true

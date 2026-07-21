@@ -1,4 +1,4 @@
-{{- if .Values.tiers.gpu.enabled }}
+{{- if and (not .Values.singlePod) .Values.tiers.gpu.enabled }}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:

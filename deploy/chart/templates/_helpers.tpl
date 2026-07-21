@@ -38,6 +38,31 @@ Empty when no webhook has a secret.
 {{- end -}}
 
 {{/*
+The enabled tiers, in a fixed order, as a space-separated string. Fixed order
+keeps the rendered config (and therefore its checksum) stable across upgrades.
+*/}}
+{{- define "nodevitals.enabledTiers" -}}
+{{- $t := list -}}
+{{- if .Values.tiers.core.enabled }}{{- $t = append $t "core" }}{{- end }}
+{{- if .Values.tiers.smart.enabled }}{{- $t = append $t "smart" }}{{- end }}
+{{- if .Values.tiers.gpu.enabled }}{{- $t = append $t "gpu" }}{{- end }}
+{{- join " " $t -}}
+{{- end -}}
+
+{{/*
+Image for the single-pod DaemonSet. The gpu build is the superset — it is the
+only one linked against NVML — so any layout that includes the gpu tier must
+use it, and core/smart behave identically there.
+*/}}
+{{- define "nodevitals.singlePodImage" -}}
+{{- if .Values.tiers.gpu.enabled -}}
+{{ .Values.image.repository }}:{{ .Values.image.gpuTag | default (printf "%s-gpu" .Chart.AppVersion) }}
+{{- else -}}
+{{ include "nodevitals.image" . }}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Pod-template annotations that roll a tier's DaemonSet when its config changes.
 
 The agent reads /etc/nodevitals/config.yaml once at startup and never re-reads
