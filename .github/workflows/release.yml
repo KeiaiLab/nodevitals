@@ -76,7 +76,7 @@ jobs:
 
       - name: Trivy scan (HIGH/CRITICAL block)
         if: steps.img.outputs.exists == 'false'
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.IMG }}:scan
           severity: HIGH,CRITICAL
