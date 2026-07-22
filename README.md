@@ -235,6 +235,31 @@ image for all tiers, built for `linux/amd64`. It is cgo/glibc rather than static
 because the gpu tier's go-nvml binding needs cgo; that also makes arm64 a cross
 -toolchain problem with no current consumer, so arm64 is deferred.
 
+## Verifying a release
+
+Every published image is signed. The public key lives in this repository, so
+verification needs nothing but cosign:
+
+```bash
+cosign verify --key cosign.pub ghcr.io/keiailab/nodevitals:<version>
+```
+
+Signing uses a key held in a HashiCorp Vault / OpenBao transit engine rather
+than sigstore's keyless flow. Keyless requires an OIDC token from an issuer
+public Fulcio trusts, and every one of those is either a browser login or a
+hosted-CI workload identity — neither of which a self-hosted release pipeline
+can produce unattended. The signature is still recorded in Rekor, so public
+auditability is unchanged; what differs is that the certificate binds a key
+rather than a person.
+
+Releases before `0.5.0` were signed keyless and verify with the identity flags
+instead:
+
+```bash
+cosign verify ghcr.io/keiailab/nodevitals:0.4.0 \
+  --certificate-identity-regexp='.+' --certificate-oidc-issuer-regexp='.+'
+```
+
 ## Third-party notices
 
 nodevitals bundles node_exporter's collectors (Apache-2.0) to serve the full

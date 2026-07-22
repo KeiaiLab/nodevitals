@@ -26,6 +26,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 IMG=ghcr.io/keiailab/nodevitals
 CHART_DIR=deploy/chart
 GH_USER=${GH_USER:-KeiaiLab-PHIL}
+# OpenBao transit key — see step 3. Override to sign with a different key.
+COSIGN_KEY=${COSIGN_KEY:-hashivault://cosign-nodevitals}
 
 SEMVER='^[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$'
 CHART_VER=$(awk '/^version:/{print $2; exit}' "$CHART_DIR/Chart.yaml" | grep -E "$SEMVER")
@@ -68,20 +70,37 @@ else
 	ok "image pushed"
 fi
 
-step "3/5 cosign signatures (by digest, never by mutable tag)"
+step "3/5 cosign signature (by digest, never by mutable tag)"
 DIG=$(docker buildx imagetools inspect "$IMG:$APP_VER" --format '{{.Manifest.Digest}}')
-verify_one() {
-	cosign verify "$1" --certificate-identity-regexp='.+' \
-		--certificate-oidc-issuer-regexp='.+' >/dev/null 2>&1
-}
-if verify_one "$IMG@$DIG"; then
+
+# Key-based signing through the cluster's OpenBao transit engine, not sigstore
+# keyless.
+#
+# Keyless needs an OIDC token from an issuer public Fulcio trusts, and that
+# list has exactly two shapes: human logins (browser required) and CI workload
+# identities (GitHub Actions — banned here by RFC-0002; gitlab.com — ours is
+# self-hosted). So there is no unattended keyless path, and every release
+# stalled on a 5-minute device-flow code that kept expiring.
+#
+# The transit key is exportable=false: the private key never leaves OpenBao,
+# and this token's policy only permits "sign with that key". Rekor still
+# records the signature, so public auditability is unchanged — what moves is
+# the identity binding, from a human's OIDC cert to key possession plus
+# OpenBao's audit log.
+: "${VAULT_ADDR:=https://sm.keiailab.dev}"
+export VAULT_ADDR
+if [ -z "${VAULT_TOKEN:-}" ]; then
+	echo "ERROR: VAULT_TOKEN is unset. Issue one with the cosign-signer policy:" >&2
+	echo "  bao token create -policy=cosign-signer -period=8760h -field=token" >&2
+	exit 1
+fi
+
+if cosign verify --key "$COSIGN_KEY" "$IMG@$DIG" >/dev/null 2>&1; then
 	skip "digest already signed"
 else
-	echo "    a browser window opens for keyless OIDC — authenticate promptly,"
-	echo "    the sigstore code expires within seconds."
-	cosign sign --yes "$IMG@$DIG"
-	verify_one "$IMG@$DIG"
-	ok "signed and verified"
+	cosign sign --yes --key "$COSIGN_KEY" "$IMG@$DIG"
+	cosign verify --key "$COSIGN_KEY" "$IMG@$DIG" >/dev/null
+	ok "signed and verified (unattended)"
 fi
 
 step "4/5 helm chart ($CHART_VER)"
