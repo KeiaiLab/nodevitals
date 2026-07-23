@@ -20,4 +20,5 @@ func NewNVMLReader() (gpuReader, error) {
 
 func (n nvmlUnavailable) Read(context.Context) ([]gpuDevice, error) { return nil, nil }
 func (n nvmlUnavailable) XidEvents() <-chan xidRaw                  { return n.closed }
+func (n nvmlUnavailable) DriverVersion() string                     { return "" }
 func (n nvmlUnavailable) Close() error                              { return nil }

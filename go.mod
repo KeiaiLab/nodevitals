@@ -29,6 +29,7 @@ require (
 	github.com/hodgesds/perf-utils v0.7.0 // indirect
 	github.com/illumos/go-kstat v0.0.0-20210513183136-173c9b0a9973 // indirect
 	github.com/jsimonetti/rtnetlink/v2 v2.2.0 // indirect
+	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/lufia/iostat v1.2.1 // indirect
 	github.com/mattn/go-xmlrpc v0.0.3 // indirect
 	github.com/mdlayher/ethtool v0.6.1 // indirect

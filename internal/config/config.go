@@ -59,6 +59,16 @@ type Config struct {
 	// NodeExporter serves the upstream node_* metric surface from this same
 	// process, so one DaemonSet can replace a separate node_exporter one.
 	NodeExporter NodeExporterConfig `yaml:"nodeExporter"`
+	// DCGMCompat serves a dcgm-exporter-compatible DCGM_FI_* surface from the
+	// gpu tier's NVML snapshot, so one DaemonSet can replace a separate
+	// dcgm-exporter one. Only effective when the gpu tier is enabled — there
+	// is no data to serve without it.
+	DCGMCompat DCGMCompatConfig `yaml:"dcgmCompat"`
+}
+
+// DCGMCompatConfig configures the DCGM_FI_* compatibility surface.
+type DCGMCompatConfig struct {
+	Enabled bool `yaml:"enabled"`
 }
 
 // NodeExporterConfig configures the embedded node_exporter collectors. Paths

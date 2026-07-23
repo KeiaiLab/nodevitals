@@ -41,6 +41,10 @@ data:
 {{ toYaml . | indent 8 }}
       {{- end }}
 {{- end }}
+{{- if and .Values.tiers.gpu.enabled .Values.dcgmCompat.enabled }}
+    dcgmCompat:
+      enabled: true
+{{- end }}
     sinks:
       metrics:
         enabled: true

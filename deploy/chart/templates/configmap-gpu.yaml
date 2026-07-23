@@ -12,6 +12,10 @@ data:
     intervalSeconds: {{ .Values.intervalSeconds }}
     rules:
 {{ toYaml .Values.gpuRules | indent 6 }}
+{{- if .Values.dcgmCompat.enabled }}
+    dcgmCompat:
+      enabled: true
+{{- end }}
     sinks:
       metrics:
         enabled: true

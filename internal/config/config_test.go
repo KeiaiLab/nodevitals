@@ -187,3 +187,25 @@ func TestLoadParsesTiersList(t *testing.T) {
 		t.Fatalf("ResolvedTiers() = %v, want [core smart gpu]", got)
 	}
 }
+
+func TestLoadDCGMCompat(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "c.yaml")
+	os.WriteFile(path, []byte("node: e104\ntiers: [gpu]\ndcgmCompat:\n  enabled: true\n"), 0o644)
+	c, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !c.DCGMCompat.Enabled {
+		t.Fatal("dcgmCompat.enabled: true must parse")
+	}
+	// Absent block stays off — the compat surface is opt-in.
+	os.WriteFile(path, []byte("node: e104\n"), 0o644)
+	c, err = Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.DCGMCompat.Enabled {
+		t.Fatal("dcgmCompat must default to disabled")
+	}
+}

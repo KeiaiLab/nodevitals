@@ -3,10 +3,13 @@ package collector
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/KeiaiLab/nodevitals/internal/dcgmcompat"
 	"github.com/KeiaiLab/nodevitals/internal/model"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 // fakeReader is a hand-written gpuReader test double — no go-nvml, no
@@ -25,6 +28,7 @@ func newFakeReader(devices []gpuDevice) *fakeReader {
 
 func (f *fakeReader) Read(ctx context.Context) ([]gpuDevice, error) { return f.devices, f.readErr }
 func (f *fakeReader) XidEvents() <-chan xidRaw                      { return f.xidCh }
+func (f *fakeReader) DriverVersion() string                         { return "580.0" }
 func (f *fakeReader) Close() error                                  { return nil }
 
 // recvEvent reads one event with a timeout instead of a sleep, so the test
@@ -46,19 +50,19 @@ func TestGPUCollectMapsDeviceToSamples(t *testing.T) {
 		UtilGPU: 55, MemUsedBytes: 1e9, MemTotalBytes: 8e9,
 		TempC: 70, PowerW: 250, ThrottleReasons: 0x40, EccUncorrected: 3, EccCorrected: 5,
 	}})
-	c := NewGPUCollector("test-node", r)
+	c := NewGPUCollector("test-node", r, nil)
 
 	got, err := c.Collect(context.Background())
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
-	// 8 fixed samples + 1 gpu_throttle_active (ThrottleReasons 0x40 =
-	// hw_thermal_slowdown) = 9.
-	if len(got) != 9 {
-		t.Fatalf("want 9 samples (8 fixed + 1 throttle_active), got %d: %+v", len(got), got)
+	// 21 fixed samples (8 original + 13 DCGM-parity fields) + 1
+	// gpu_throttle_active (ThrottleReasons 0x40 = hw_thermal_slowdown) = 22.
+	if len(got) != 22 {
+		t.Fatalf("want 22 samples (21 fixed + 1 throttle_active), got %d: %+v", len(got), got)
 	}
 
-	// deterministic order — table order from the design contract. The 8 fixed
+	// deterministic order — table order from the design contract. The 21 fixed
 	// samples come first, in this order; the variable gpu_throttle_active
 	// sample(s) follow, so only the fixed prefix is order-checked.
 	wantOrder := []string{
@@ -70,6 +74,19 @@ func TestGPUCollectMapsDeviceToSamples(t *testing.T) {
 		"gpu_throttle_reasons",
 		"gpu_ecc_uncorrected_total",
 		"gpu_ecc_corrected_total",
+		"gpu_mem_free_bytes",
+		"gpu_mem_reserved_bytes",
+		"gpu_mem_copy_util_pct",
+		"gpu_encoder_util_pct",
+		"gpu_decoder_util_pct",
+		"gpu_sm_clock_mhz",
+		"gpu_mem_clock_mhz",
+		"gpu_memory_temperature_celsius",
+		"gpu_pcie_replay_total",
+		"gpu_energy_joules_total",
+		"gpu_remapped_rows_corrected_total",
+		"gpu_remapped_rows_uncorrected_total",
+		"gpu_row_remap_failed",
 	}
 	byMetric := map[string]model.Sample{}
 	for i, s := range got {
@@ -125,7 +142,7 @@ func TestGPUCollectMapsDeviceToSamples(t *testing.T) {
 
 func TestGPUCollectZeroDevicesYieldsZeroSamplesNoError(t *testing.T) {
 	r := newFakeReader(nil)
-	c := NewGPUCollector("test-node", r)
+	c := NewGPUCollector("test-node", r, nil)
 
 	got, err := c.Collect(context.Background())
 	if err != nil {
@@ -142,7 +159,7 @@ func TestGPUCollectZeroDevicesYieldsZeroSamplesNoError(t *testing.T) {
 func TestGPUCollectWrapsReaderError(t *testing.T) {
 	sentinel := errors.New("nvml init failed")
 	r := &fakeReader{xidCh: make(chan xidRaw), readErr: sentinel}
-	c := NewGPUCollector("test-node", r)
+	c := NewGPUCollector("test-node", r, nil)
 
 	_, err := c.Collect(context.Background())
 	if err == nil {
@@ -161,16 +178,16 @@ func TestGPUCollectMultipleDevices(t *testing.T) {
 		{Index: 0, UtilGPU: 10},
 		{Index: 1, UtilGPU: 20},
 	})
-	c := NewGPUCollector("test-node", r)
+	c := NewGPUCollector("test-node", r, nil)
 
 	got, err := c.Collect(context.Background())
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
 	// Both devices have ThrottleReasons 0 → no gpu_throttle_active samples, so
-	// only the 8 fixed metrics per device: 8 × 2 = 16.
-	if len(got) != 16 {
-		t.Fatalf("want 16 samples (8 metrics × 2 devices), got %d", len(got))
+	// only the 21 fixed metrics per device: 21 × 2 = 42.
+	if len(got) != 42 {
+		t.Fatalf("want 42 samples (21 metrics × 2 devices), got %d", len(got))
 	}
 
 	util := map[string]float64{}
@@ -196,7 +213,7 @@ func TestGPUCollectEmitsIdentityLabels(t *testing.T) {
 		Index: 0, UUID: "GPU-abc", Name: "NVIDIA A100", PCIBusID: "00000000:65:00.0",
 		ThrottleReasons: 0x40, // → also exercises a gpu_throttle_active sample
 	}})
-	c := NewGPUCollector("test-node", r)
+	c := NewGPUCollector("test-node", r, nil)
 
 	got, err := c.Collect(context.Background())
 	if err != nil {
@@ -231,7 +248,7 @@ func TestGPUCollectEmitsIdentityLabels(t *testing.T) {
 // gpu_ecc_uncorrected_total in the fixed order.
 func TestGPUCollectEccCorrectedCounter(t *testing.T) {
 	r := newFakeReader([]gpuDevice{{Index: 0, EccCorrected: 5}})
-	c := NewGPUCollector("test-node", r)
+	c := NewGPUCollector("test-node", r, nil)
 
 	got, err := c.Collect(context.Background())
 	if err != nil {
@@ -272,7 +289,7 @@ func TestGPUCollectThrottleActivePerReason(t *testing.T) {
 		Index: 0, UUID: "GPU-abc", Name: "NVIDIA A100", PCIBusID: "00000000:65:00.0",
 		ThrottleReasons: 0x20 | 0x40,
 	}})
-	c := NewGPUCollector("test-node", r)
+	c := NewGPUCollector("test-node", r, nil)
 
 	got, err := c.Collect(context.Background())
 	if err != nil {
@@ -318,7 +335,7 @@ func TestGPUCollectThrottleActivePerReason(t *testing.T) {
 
 	// Second case: a zero mask emits zero gpu_throttle_active samples.
 	r0 := newFakeReader([]gpuDevice{{Index: 0, ThrottleReasons: 0}})
-	got0, err := NewGPUCollector("test-node", r0).Collect(context.Background())
+	got0, err := NewGPUCollector("test-node", r0, nil).Collect(context.Background())
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -332,7 +349,7 @@ func TestGPUCollectThrottleActivePerReason(t *testing.T) {
 	// filtered — gpu_throttle_active must fire only for performance-limiting bits,
 	// else NVML's ever-set gpu_idle would make every idle GPU a false positive.
 	rb := newFakeReader([]gpuDevice{{Index: 0, ThrottleReasons: 0x1 | 0x40}}) // gpu_idle(benign) + hw_thermal_slowdown(active)
-	gotb, err := NewGPUCollector("test-node", rb).Collect(context.Background())
+	gotb, err := NewGPUCollector("test-node", rb, nil).Collect(context.Background())
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
@@ -349,7 +366,7 @@ func TestGPUCollectThrottleActivePerReason(t *testing.T) {
 
 func TestGPUEventsClassifiesXidToModelEvent(t *testing.T) {
 	r := newFakeReader(nil)
-	c := NewGPUCollector("test-node", r)
+	c := NewGPUCollector("test-node", r, nil)
 	// The agent reaches XID events by type-asserting the registered Collector
 	// to EventSource — exercise that same path here, not a concrete shortcut.
 	events := c.(EventSource).Events()
@@ -415,5 +432,43 @@ func TestGPUEventsClassifiesXidToModelEvent(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("events channel did not close within 2s after source closed (possible goroutine leak)")
+	}
+}
+
+func TestGPUCollectFeedsDCGMCompatExporter(t *testing.T) {
+	// One Collect must land the same snapshot on both surfaces: native samples
+	// (bytes/joules) and the DCGM compat exporter (MiB/mJ at render time).
+	r := newFakeReader([]gpuDevice{{
+		Index: 0, UUID: "GPU-abc", Name: "RTX 4070", PCIBusID: "00000000:08:00.0",
+		MemUsedBytes: 296 * 1 << 20, MemFreeBytes: 11719 * 1 << 20,
+		EnergyMilliJoules: 5000, SMClockMHz: 210,
+	}})
+	dcgm := dcgmcompat.New("test-node")
+	c := NewGPUCollector("test-node", r, dcgm)
+
+	got, err := c.Collect(context.Background())
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	// Native energy is joules (mJ/1000).
+	for _, s := range got {
+		if s.Metric == "gpu_energy_joules_total" && s.Value != 5 {
+			t.Fatalf("gpu_energy_joules_total = %v, want 5 (5000 mJ)", s.Value)
+		}
+	}
+
+	// The exporter now renders the same device with DCGM units and the fake
+	// reader's driver version on the label.
+	exp := `# HELP DCGM_FI_DEV_FB_USED Framebuffer memory used (in MiB).
+# TYPE DCGM_FI_DEV_FB_USED gauge
+DCGM_FI_DEV_FB_USED{DCGM_FI_DRIVER_VERSION="580.0",Hostname="test-node",UUID="GPU-abc",device="nvidia0",gpu="0",modelName="RTX 4070",pci_bus_id="00000000:08:00.0"} 296
+# HELP DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION Total energy consumption since boot (in mJ).
+# TYPE DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION counter
+DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION{DCGM_FI_DRIVER_VERSION="580.0",Hostname="test-node",UUID="GPU-abc",device="nvidia0",gpu="0",modelName="RTX 4070",pci_bus_id="00000000:08:00.0"} 5000
+`
+	if err := testutil.CollectAndCompare(dcgm, strings.NewReader(exp),
+		"DCGM_FI_DEV_FB_USED", "DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION"); err != nil {
+		t.Fatal(err)
 	}
 }

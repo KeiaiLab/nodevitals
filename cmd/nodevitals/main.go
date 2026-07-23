@@ -16,6 +16,7 @@ import (
 	"github.com/KeiaiLab/nodevitals/internal/agent"
 	"github.com/KeiaiLab/nodevitals/internal/collector"
 	"github.com/KeiaiLab/nodevitals/internal/config"
+	"github.com/KeiaiLab/nodevitals/internal/dcgmcompat"
 	"github.com/KeiaiLab/nodevitals/internal/event"
 	"github.com/KeiaiLab/nodevitals/internal/httpapi"
 	"github.com/KeiaiLab/nodevitals/internal/nodeexporter"
@@ -35,8 +36,11 @@ func main() {
 		cfg.Node = os.Getenv("NODE_NAME") // downward API
 	}
 
+	metrics := sink.NewMetrics()
+
 	tiers := cfg.ResolvedTiers()
 	var reg collector.Registry
+	var dcgm *dcgmcompat.Exporter
 	for _, tier := range tiers {
 		switch tier {
 		case "core":
@@ -66,7 +70,18 @@ func main() {
 				slog.Warn("gpu reader init failed — skipping gpu tier", "err", err)
 				continue
 			}
-			reg.Add(collector.NewGPUCollector(cfg.Node, r))
+			// Registered only when the reader is live: a GPU-less node then
+			// serves zero DCGM_FI_* series, exactly like the dcgm-exporter
+			// DaemonSet that never schedules there.
+			if cfg.DCGMCompat.Enabled {
+				dcgm = dcgmcompat.New(cfg.Node)
+				if err := metrics.Register(dcgm); err != nil {
+					slog.Error("register dcgm compat exporter", "err", err)
+					os.Exit(1)
+				}
+				slog.Info("dcgm compat surface enabled", "driver", r.DriverVersion())
+			}
+			reg.Add(collector.NewGPUCollector(cfg.Node, r, dcgm))
 		default:
 			slog.Error("unknown tier", "tier", tier, "known", "core, smart, gpu")
 			os.Exit(1)
@@ -79,7 +94,6 @@ func main() {
 	for _, w := range cfg.Sinks.Webhook {
 		webhooks = append(webhooks, sink.NewWebhook(w, nil))
 	}
-	metrics := sink.NewMetrics()
 
 	// Serve the upstream node_* surface from this same endpoint when asked, so
 	// one DaemonSet replaces a separate node_exporter one and the existing

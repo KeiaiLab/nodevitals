@@ -18,6 +18,7 @@ import (
 // compiles it (gpu_stub.go stands in instead).
 type nvmlReader struct {
 	devices []nvml.Device
+	driver  string // NVML driver version, read once at init
 
 	set   nvml.EventSet
 	xidCh chan xidRaw
@@ -79,8 +80,13 @@ func NewNVMLReader() (gpuReader, error) {
 		}
 	}
 
+	// Best-effort: an empty version leaves the DCGM_FI_DRIVER_VERSION label
+	// empty (dropped at ingestion), never blocks the reader.
+	driver, _ := nvml.SystemGetDriverVersion()
+
 	r := &nvmlReader{
 		devices: devices,
+		driver:  driver,
 		set:     set,
 		xidCh:   make(chan xidRaw),
 		done:    make(chan struct{}),
@@ -147,16 +153,57 @@ func (r *nvmlReader) Read(_ context.Context) ([]gpuDevice, error) {
 
 		if util, ret := dev.GetUtilizationRates(); ret == nvml.SUCCESS {
 			d.UtilGPU = float64(util.Gpu)
+			d.MemCopyUtil = float64(util.Memory)
 		}
-		if mem, ret := dev.GetMemoryInfo(); ret == nvml.SUCCESS {
+		// _v2 adds Free and Reserved (the DCGM FB_FREE/FB_RESERVED fields);
+		// pre-R515 drivers only answer the v1 call, so fall back rather than
+		// losing used/total on them.
+		if mem, ret := dev.GetMemoryInfo_v2(); ret == nvml.SUCCESS {
 			d.MemUsedBytes = float64(mem.Used)
 			d.MemTotalBytes = float64(mem.Total)
+			d.MemFreeBytes = float64(mem.Free)
+			d.MemReservedBytes = float64(mem.Reserved)
+		} else if mem, ret := dev.GetMemoryInfo(); ret == nvml.SUCCESS {
+			d.MemUsedBytes = float64(mem.Used)
+			d.MemTotalBytes = float64(mem.Total)
+			d.MemFreeBytes = float64(mem.Free)
 		}
 		if temp, ret := dev.GetTemperature(nvml.TEMPERATURE_GPU); ret == nvml.SUCCESS {
 			d.TempC = float64(temp)
 		}
+		// Memory (HBM) temperature only exists as an NVML field value, not a
+		// TemperatureSensors_t member. Consumer GPUs answer NOT_SUPPORTED in
+		// NvmlReturn — leaving 0, which is exactly what dcgm-exporter reports
+		// for them (fleet-verified).
+		fv := []nvml.FieldValue{{FieldId: nvml.FI_DEV_MEMORY_TEMP}}
+		if ret := dev.GetFieldValues(fv); ret == nvml.SUCCESS && nvml.Return(fv[0].NvmlReturn) == nvml.SUCCESS {
+			d.MemTempC = decodeFieldValue(fv[0].ValueType, fv[0].Value)
+		}
 		if mw, ret := dev.GetPowerUsage(); ret == nvml.SUCCESS {
 			d.PowerW = float64(mw) / 1000.0
+		}
+		if mj, ret := dev.GetTotalEnergyConsumption(); ret == nvml.SUCCESS {
+			d.EnergyMilliJoules = float64(mj)
+		}
+		if enc, _, ret := dev.GetEncoderUtilization(); ret == nvml.SUCCESS {
+			d.EncUtil = float64(enc)
+		}
+		if dec, _, ret := dev.GetDecoderUtilization(); ret == nvml.SUCCESS {
+			d.DecUtil = float64(dec)
+		}
+		if clk, ret := dev.GetClockInfo(nvml.CLOCK_SM); ret == nvml.SUCCESS {
+			d.SMClockMHz = float64(clk)
+		}
+		if clk, ret := dev.GetClockInfo(nvml.CLOCK_MEM); ret == nvml.SUCCESS {
+			d.MemClockMHz = float64(clk)
+		}
+		if replays, ret := dev.GetPcieReplayCounter(); ret == nvml.SUCCESS {
+			d.PcieReplayTotal = float64(replays)
+		}
+		if corr, unc, _, failed, ret := dev.GetRemappedRows(); ret == nvml.SUCCESS {
+			d.RemappedCorr = float64(corr)
+			d.RemappedUnc = float64(unc)
+			d.RemapFailed = failed
 		}
 		if reasons, ret := dev.GetCurrentClocksEventReasons(); ret == nvml.SUCCESS {
 			d.ThrottleReasons = reasons
@@ -184,6 +231,8 @@ func (r *nvmlReader) Read(_ context.Context) ([]gpuDevice, error) {
 }
 
 func (r *nvmlReader) XidEvents() <-chan xidRaw { return r.xidCh }
+
+func (r *nvmlReader) DriverVersion() string { return r.driver }
 
 // Close stops watchXid, waits for it to fully return (guaranteeing it will
 // never call set.Wait again), and only then frees the EventSet and shuts
