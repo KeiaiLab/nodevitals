@@ -51,6 +51,9 @@ func (a *Agent) Tick(ctx context.Context) {
 	if len(events) == 0 {
 		return
 	}
+	if a.metrics != nil {
+		a.metrics.RecordEvents(events)
+	}
 	for _, s := range a.webhooks {
 		if err := queue.DeliverWithRetry(ctx, s, events, 5, a.backoff, time.Sleep, rand.Float64); err != nil {
 			slog.Error("event delivery failed", "sink", s.Name(), "err", err)
@@ -110,6 +113,9 @@ func (a *Agent) drainEventSource(ctx context.Context, es collector.EventSource) 
 		case ev, ok := <-ch:
 			if !ok {
 				return
+			}
+			if a.metrics != nil {
+				a.metrics.RecordEvents([]model.Event{ev})
 			}
 			for _, s := range a.webhooks {
 				if err := queue.DeliverWithRetry(ctx, s, []model.Event{ev}, 5, a.backoff, time.Sleep, rand.Float64); err != nil {
