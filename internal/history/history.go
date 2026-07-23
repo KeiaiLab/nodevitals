@@ -116,11 +116,25 @@ func (s *Store) Ingest(samples []model.Sample, now time.Time) error {
 		a.count++
 	}
 
+	// A gap longer than one flushInterval (process paused, node stalled) means
+	// several boundaries close in this single call. Only the LAST one gets an
+	// actual flush — it carries whatever the accumulator holds (every sample
+	// collected since the previous flush, regardless of which skipped
+	// boundary they'd nominally belong to) and is stamped at that most-recent
+	// boundary: "the average as of now, catching up" rather than the oldest
+	// one. Flushing per-boundary here would (a) only ever have real data on
+	// the first iteration, since s.acc empties after every flush — silently
+	// writing nothing for the rest — and (b) stamp that one real point at the
+	// OLDEST stale boundary, understating how current the average is.
+	last := time.Time{}
 	for !s.next.After(now) {
-		if err := s.flushLocked(s.next); err != nil {
+		last = s.next
+		s.next = s.next.Add(s.flushInterval)
+	}
+	if !last.IsZero() {
+		if err := s.flushLocked(last); err != nil {
 			return err
 		}
-		s.next = s.next.Add(s.flushInterval)
 	}
 	return nil
 }
@@ -129,7 +143,22 @@ func (s *Store) Ingest(samples []model.Sample, now time.Time) error {
 // accumulator, and prunes points older than retention — all in one bbolt
 // transaction. Called with s.mu held.
 func (s *Store) flushLocked(ts time.Time) error {
-	cutoff := encodeTimestamp(ts.Add(-s.retention))
+	// cutoffTime can predate the Unix epoch when retention is configured
+	// larger than the time since the epoch (e.g. a very large retentionDays
+	// meaning "keep forever"). encodeTimestamp's uint64(t.Unix()) cast does
+	// not clamp a negative Unix() to 0 — it wraps to a value near 2^64, which
+	// would make EVERY real, valid key compare less than it, so the prune
+	// loop below would delete every point in every bucket on every flush,
+	// including the one flushLocked itself just wrote in this same
+	// transaction. Skipping the prune pass for a pre-epoch cutoff is correct
+	// for any retention value: nothing has actually aged out yet if the
+	// cutoff isn't a valid point in time.
+	cutoffTime := ts.Add(-s.retention)
+	prune := !cutoffTime.Before(time.Unix(0, 0))
+	var cutoff []byte
+	if prune {
+		cutoff = encodeTimestamp(cutoffTime)
+	}
 	err := s.db.Update(func(tx *bbolt.Tx) error {
 		for key, a := range s.acc {
 			if a.count == 0 {
@@ -141,6 +170,9 @@ func (s *Store) flushLocked(ts time.Time) error {
 			}
 			if err := b.Put(encodeTimestamp(ts), encodeValue(a.sum/float64(a.count))); err != nil {
 				return err
+			}
+			if !prune {
+				continue
 			}
 			c := b.Cursor()
 			for k, _ := c.First(); k != nil && bytes.Compare(k, cutoff) < 0; k, _ = c.Next() {
@@ -180,11 +212,15 @@ func (s *Store) Query(metric string, since time.Time, filter map[string]string) 
 			if !strings.HasPrefix(key, prefix) {
 				return nil
 			}
-			_, node, tier, device, labels := parseSeriesKey(key)
+			// canonicalMetric (parsed back out of the bucket key) rather than the
+			// caller-supplied metric argument: prefix matching means a short or
+			// malformed query string must never be echoed back as if it were the
+			// actual stored series' name.
+			canonicalMetric, node, tier, device, labels := parseSeriesKey(key)
 			if !matchesFilter(node, device, labels, filter) {
 				return nil
 			}
-			sh := SeriesHistory{Metric: metric, Node: node, Tier: tier, Device: device, Labels: labels}
+			sh := SeriesHistory{Metric: canonicalMetric, Node: node, Tier: tier, Device: device, Labels: labels}
 			c := b.Cursor()
 			var k, v []byte
 			if sinceKey != nil {

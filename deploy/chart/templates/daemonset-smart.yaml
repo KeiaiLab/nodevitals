@@ -38,6 +38,9 @@ spec:
             - name: metrics
               containerPort: {{ .Values.metrics.port }}
           securityContext:
+            # Unconditionally root already (raw /host/dev ioctls) — no
+            # nodevitals.historyInitContainers chown needed even when
+            # history.enabled: root already owns whatever it writes.
             runAsUser: 0
             runAsNonRoot: false
             {{- if .Values.tiers.smart.privileged }}
@@ -61,6 +64,7 @@ spec:
             - name: config
               mountPath: /etc/nodevitals
               readOnly: true
+            {{- include "nodevitals.historyMounts" . | nindent 12 }}
           resources:
 {{ toYaml .Values.resources | indent 12 }}
           livenessProbe:
@@ -80,4 +84,5 @@ spec:
         - name: config
           configMap:
             name: nodevitals-smart
+        {{- include "nodevitals.historyVolumes" . | nindent 8 }}
 {{- end }}

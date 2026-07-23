@@ -78,9 +78,10 @@ dcgmCompat:
 #
 # Ingest 는 매 tier 의 원본 샘플을 스캔하지만 disk 에는 metrics 목록에 있는
 # 것만, 그것도 5분에 1점(평균)만 남는다 — 30초 간격 원본을 그대로 몇 년치
-# 쌓는 게 아니다. hostPath 가 root 소유로 생성되므로(DirectoryOrCreate),
-# 컨테이너도 root 로 떠야 쓸 수 있다 — securityContext 가 dcgmCompat/smart 와
-# 동일하게 이 값이 true 일 때 root 로 relax 된다(별도 init container 불필요).
+# 쌓는 게 아니다. hostPath 가 root 소유로 생성되므로(DirectoryOrCreate), 최소
+# 권한 initContainer(chownImage, CAP_CHOWN 만 부여) 가 기동 시 1회 소유권을
+# 넘겨받아 메인 컨테이너는 non-root 로 유지한다(smart tier 가 이미 root 인
+# 경우는 예외 — 그때는 root 가 어차피 쓸 수 있어 chown 자체가 불필요).
 history:
   enabled: false
   # 5년 — GPU 하드웨어 교체 주기 기준. 값 하나로 조정.
@@ -95,6 +96,10 @@ history:
   mountPath: /var/lib/nodevitals/history
   # 빈 목록이면 에이전트가 GPU 헬스 4종(util/mem/온도/전력)으로 기본 적용.
   metrics: []
+  # chown -R 65532:65532 <mountPath> 1회 실행 후 종료하는 initContainer 이미지.
+  # coreutils 갖춘 최소 이미지면 충분 — 메인 nodevitals 이미지(distroless, 셸
+  # 없음)는 이 목적에 못 쓴다.
+  chownImage: busybox:1.36.1
 
 # hostNetwork 는 nodeExporter.enabled 시 자동으로 켜진다. 독립적으로 강제하려면 true.
 hostNetwork: false

@@ -254,9 +254,12 @@ metric allowlist is the GPU health quartet (`gpu_utilization_pct`, `gpu_mem_used
 The chart backs this with a writable hostPath (`history.hostPath`, default
 `/var/lib/nodevitals/history`) so data survives pod restarts, not just process restarts — a
 DaemonSet pod restarts on node reboots and image upgrades, and in-memory-only history would
-reset on every one. Because a fresh hostPath directory is root-owned, enabling `history`
-relaxes the container to root the same way `tiers.smart.enabled` already does (no separate
-init container).
+reset on every one. A fresh hostPath directory is root-owned; a minimal `history-chown`
+initContainer (`history.chownImage`, default `busybox`) takes just `CAP_CHOWN` — not full root —
+to hand ownership to the same non-root UID the main container already runs as, once, at startup.
+The main container itself never needs elevated privilege for this (skipped only when
+`tiers.smart.enabled` already forces the whole pod to root for its own, unrelated reasons — in
+that case root already owns whatever it writes).
 
 ## Delivery surfaces
 

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -142,6 +143,12 @@ func TestParseRange(t *testing.T) {
 		{"0d", true, time.Time{}},
 		{"-5d", true, time.Time{}},
 		{"garbage", true, time.Time{}},
+		// Regression: a huge-but-parseable day count used to multiply straight
+		// into time.Duration with no bound, risking silent overflow instead of
+		// a clean 400.
+		{"99999999999d", true, time.Time{}},
+		{fmt.Sprintf("%dd", maxRangeDays+1), true, time.Time{}},
+		{fmt.Sprintf("%dd", maxRangeDays), false, now.Add(-maxRangeDays * 24 * time.Hour)},
 	}
 	for _, c := range cases {
 		got, err := parseRange(c.in, now)
@@ -152,5 +159,52 @@ func TestParseRange(t *testing.T) {
 		if !c.wantErr && !got.Equal(c.want) {
 			t.Errorf("parseRange(%q) = %v, want %v", c.in, got, c.want)
 		}
+	}
+}
+
+// TestHistoryEndpointOversizedResponseReturns413 is a regression test for
+// the ultracode adversarial-review finding: GET /v1/history/{metric} has no
+// auth (matching every other nodevitals endpoint), and at the chart's own
+// shipped defaults (5y retention, 5m resolution) an ordinary un-ranged
+// request can force well over a million points into memory — tens of MB
+// against a container memory limit measured in tens of MB. The handler must
+// reject an oversized result loudly (413) instead of encoding it.
+func TestHistoryEndpointOversizedResponseReturns413(t *testing.T) {
+	pts := make([]history.Point, maxHistoryResponsePoints+1)
+	for i := range pts {
+		pts[i] = history.Point{Timestamp: time.Unix(int64(i), 0).UTC(), Value: float64(i)}
+	}
+	h := &stubHist{res: []history.SeriesHistory{{Metric: "gpu_utilization_pct", Node: "e104", Points: pts}}}
+	mux := NewServer(stubSrc{}, http.NotFoundHandler(), h)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/v1/history/gpu_utilization_pct")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413 for a response over the point cap", resp.StatusCode)
+	}
+}
+
+func TestHistoryEndpointWithinCapReturns200(t *testing.T) {
+	pts := make([]history.Point, maxHistoryResponsePoints)
+	for i := range pts {
+		pts[i] = history.Point{Timestamp: time.Unix(int64(i), 0).UTC(), Value: float64(i)}
+	}
+	h := &stubHist{res: []history.SeriesHistory{{Metric: "gpu_utilization_pct", Node: "e104", Points: pts}}}
+	mux := NewServer(stubSrc{}, http.NotFoundHandler(), h)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/v1/history/gpu_utilization_pct")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200 at exactly the cap", resp.StatusCode)
 	}
 }

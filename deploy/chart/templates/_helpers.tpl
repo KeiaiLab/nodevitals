@@ -135,10 +135,7 @@ ansible role writing SMART) drops .prom files into.
 {{/*
 Writable hostPath for the long-term downsampled history store (bbolt file).
 Unlike every other mount (proc/sys/dev/rootfs/textfile/udev), this one is
-read-write — the container writes its own history.db here. The pod-level
-securityContext relaxes to root exactly when this is enabled (see
-daemonset-single.yaml / daemonset-gpu.yaml), which is what makes writing to
-a root-owned DirectoryOrCreate hostPath work without an extra init container.
+read-write — the container writes its own history.db here.
 */}}
 {{- define "nodevitals.historyMounts" -}}
 {{- if .Values.history.enabled }}
@@ -149,9 +146,54 @@ a root-owned DirectoryOrCreate hostPath work without an extra init container.
 
 {{- define "nodevitals.historyVolumes" -}}
 {{- if .Values.history.enabled }}
+{{- $p := .Values.history.hostPath }}
+{{- if or (not $p) (eq $p "/") (lt (len $p) 4) }}
+{{- fail (printf "history.hostPath %q is missing or dangerously short — this becomes a chown -R (initContainer) and a read-write hostPath mount target on every node; refusing a value that could resolve to / or another top-level system directory" $p) }}
+{{- end }}
 - name: history
   hostPath:
-    path: {{ .Values.history.hostPath | quote }}
+    path: {{ $p | quote }}
     type: DirectoryOrCreate
+{{- end }}
+{{- end -}}
+
+{{/*
+One-shot ownership fix for the history hostPath. A fresh DirectoryOrCreate
+hostPath is root:root — the main container needs write access there but
+should NOT have to run as root for it (unlike tiers.smart.enabled, which
+needs raw /host/dev ioctls no capability grant can substitute for). This
+initContainer runs as the SAME non-root UID the main container uses,
+granted only CAP_CHOWN (not full root) to retarget ownership of a directory
+it doesn't yet own, then exits — the main container never needs elevated
+privilege at all.
+
+Call with (dict "ctx" . "alreadyRoot" <bool>) — alreadyRoot names whether
+THIS pod's main container is already forced to root by something else in
+THIS SAME template (only daemonset-single.yaml's tiers.smart.enabled
+qualifies: smart and history share one container there, so root already
+owns whatever it's about to write). daemonset-gpu.yaml has no such tier in
+its own pod — smart there is a wholly separate DaemonSet — so it always
+passes alreadyRoot=false and always gets the chown when history is on.
+Skipped when alreadyRoot: root already owns the file it's about to write.
+*/}}
+{{- define "nodevitals.historyInitContainers" -}}
+{{- $ctx := .ctx -}}
+{{- if and $ctx.Values.history.enabled (not .alreadyRoot) }}
+- name: history-chown
+  image: {{ $ctx.Values.history.chownImage | quote }}
+  command: ["chown", "-R", "65532:65532", {{ $ctx.Values.history.mountPath | quote }}]
+  securityContext:
+    runAsUser: 65532
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    seccompProfile:
+      type: RuntimeDefault
+    capabilities:
+      drop: ["ALL"]
+      add: ["CHOWN"]
+  volumeMounts:
+    - name: history
+      mountPath: {{ $ctx.Values.history.mountPath | quote }}
 {{- end }}
 {{- end -}}

@@ -200,3 +200,71 @@ func TestOpenCreatesDataDirAndReopens(t *testing.T) {
 		t.Fatalf("data did not survive Close+reopen: %+v", res)
 	}
 }
+
+// TestRetentionLargerThanUnixEpochDoesNotDeleteEverything is a regression
+// test for the ultracode adversarial-review finding: a retention window
+// large enough to make (flush timestamp - retention) predate 1970 used to
+// wrap the prune cutoff to ~2^64 via the int64->uint64 cast, so every real
+// key compared "less than" it and the prune loop deleted every point in
+// every bucket on every flush — including the point flushLocked itself had
+// just written in the same transaction. A 100-year retention (safely under
+// time.Duration's ~292y ceiling, so this isn't confounded by Duration
+// overflow) reliably predates the epoch from any 2020s+ "now".
+func TestRetentionLargerThanUnixEpochDoesNotDeleteEverything(t *testing.T) {
+	s := mustOpen(t, time.Minute, 100*365*24*time.Hour, "gpu_utilization_pct")
+	base := time.Date(2026, 1, 1, 0, 1, 0, 0, time.UTC)
+	if err := s.Ingest([]model.Sample{gpuSample("e104", "gpu0", 55, base)}, base); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if err := s.Ingest(nil, base.Add(time.Minute)); err != nil { // cross the flush boundary
+		t.Fatalf("Ingest (flush): %v", err)
+	}
+	res, err := s.Query("gpu_utilization_pct", time.Time{}, nil)
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if len(res) != 1 || len(res[0].Points) != 1 {
+		t.Fatalf("a pre-epoch retention cutoff must not delete the point just written, got: %+v", res)
+	}
+	if res[0].Points[0].Value != 55 {
+		t.Fatalf("point value = %v, want 55", res[0].Points[0].Value)
+	}
+}
+
+// TestIngestCatchUpAfterLongGapFlushesOnceAtLatestBoundary is a regression
+// test for the ultracode finding on multi-boundary catch-up: previously,
+// crossing several stale flush boundaries in one Ingest call flushed a real
+// point only at the OLDEST boundary (every later iteration found an already
+// -emptied accumulator and silently wrote nothing). The fix flushes once,
+// stamped at the LATEST boundary being caught up to.
+func TestIngestCatchUpAfterLongGapFlushesOnceAtLatestBoundary(t *testing.T) {
+	s := mustOpen(t, time.Minute, time.Hour, "gpu_utilization_pct")
+	base := time.Date(2026, 1, 1, 0, 0, 30, 0, time.UTC) // 30s past a 1m boundary
+	if err := s.Ingest([]model.Sample{gpuSample("e104", "gpu0", 10, base)}, base); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	// Jump 5 minutes ahead in a single call — 5 boundaries close at once,
+	// simulating a process stall or a long scheduling gap.
+	jump := base.Add(5 * time.Minute)
+	if err := s.Ingest([]model.Sample{gpuSample("e104", "gpu0", 20, jump)}, jump); err != nil {
+		t.Fatalf("Ingest (catch-up): %v", err)
+	}
+	res, err := s.Query("gpu_utilization_pct", time.Time{}, nil)
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if len(res) != 1 {
+		t.Fatalf("want 1 series, got %d", len(res))
+	}
+	pts := res[0].Points
+	if len(pts) != 1 {
+		t.Fatalf("catch-up across 5 boundaries must flush exactly once, got %d points: %+v", len(pts), pts)
+	}
+	wantTS := base.Truncate(time.Minute).Add(5 * time.Minute) // the LATEST closed boundary, not the first
+	if !pts[0].Timestamp.Equal(wantTS) {
+		t.Fatalf("catch-up point timestamp = %v, want the latest boundary %v (not the oldest)", pts[0].Timestamp, wantTS)
+	}
+	if pts[0].Value != 15 { // avg(10, 20) — both samples landed in the single flushed batch
+		t.Fatalf("catch-up point value = %v, want 15 (avg of both samples)", pts[0].Value)
+	}
+}

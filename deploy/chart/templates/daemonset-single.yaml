@@ -46,12 +46,16 @@ spec:
           operator: Exists
           effect: NoSchedule
       {{- end }}
-      {{- if not (or .Values.tiers.smart.enabled .Values.history.enabled) }}
+      {{- if not .Values.tiers.smart.enabled }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
         seccompProfile:
           type: RuntimeDefault
+      {{- end }}
+      {{- with (include "nodevitals.historyInitContainers" (dict "ctx" . "alreadyRoot" .Values.tiers.smart.enabled)) }}
+      initContainers:
+        {{- . | nindent 8 }}
       {{- end }}
       containers:
         - name: nodevitals
@@ -74,12 +78,13 @@ spec:
             - name: metrics
               containerPort: {{ .Values.metrics.port }}
           securityContext:
-            {{- if or .Values.tiers.smart.enabled .Values.history.enabled }}
+            {{- if .Values.tiers.smart.enabled }}
             # smart 를 함께 돌리면 컨테이너가 하나뿐이라 /proc·/sys 수집까지
             # 같은 권한을 쓴다 — 최소권한을 유지하려면 singlePod 를 끄고 tier
-            # 별 DaemonSet 으로 분리한다. history 도 같은 조건에 얹힌다: hostPath
-            # 쓰기 대상이 root 소유로 생성되므로(DirectoryOrCreate) root 실행이
-            # 필요하다 — 별도 init container 없이 이 relax 하나로 해결.
+            # 별 DaemonSet 으로 분리한다. history 는 별도 initContainer 가 hostPath
+            # 소유권을 1회 넘겨받아 처리하므로 이 relax 에 얹히지 않는다(위
+            # nodevitals.historyInitContainers 참조) — smart 가 이미 root 인
+            # 경우만 예외적으로 그 root 를 공유해 chown 자체를 생략한다.
             runAsUser: 0
             runAsNonRoot: false
             {{- if .Values.tiers.smart.privileged }}

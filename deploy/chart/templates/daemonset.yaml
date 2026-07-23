@@ -29,6 +29,10 @@ spec:
         runAsUser: 65532
         seccompProfile:
           type: RuntimeDefault
+      {{- with (include "nodevitals.historyInitContainers" (dict "ctx" . "alreadyRoot" false)) }}
+      initContainers:
+        {{- . | nindent 8 }}
+      {{- end }}
       containers:
         - name: nodevitals
           image: {{ include "nodevitals.image" . | quote }}
@@ -59,6 +63,7 @@ spec:
               mountPath: /etc/nodevitals
               readOnly: true
             {{- include "nodevitals.nodeExporterMounts" . | nindent 12 }}
+            {{- include "nodevitals.historyMounts" . | nindent 12 }}
           resources:
 {{ toYaml .Values.resources | indent 12 }}
           livenessProbe:
@@ -82,4 +87,5 @@ spec:
           configMap:
             name: nodevitals-core
         {{- include "nodevitals.nodeExporterVolumes" . | nindent 8 }}
+        {{- include "nodevitals.historyVolumes" . | nindent 8 }}
 {{- end }}
