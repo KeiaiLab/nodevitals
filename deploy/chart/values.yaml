@@ -13,6 +13,18 @@ image:
 # 건너뛴다(에이전트가 경고 후 계속 — 다른 tier 는 정상 수집).
 singlePod: false
 
+# DaemonSet RollingUpdate 예산 — 미지정 시 k8s API 기본값 maxUnavailable=1 이
+# 적용된다. 그 기본값의 실측 함정(2026-07-23, e121 하드웨어 사망 RCA): 노드 하나가
+# NotReady 로 영구히 멈추면 그 노드의 파드는 Ready 에 결코 도달하지 못하고
+# maxUnavailable=1 예산을 영구히 독점한다 — 롤아웃 컨트롤러가 나머지 정상 노드는
+# *단 하나도* 건드리지 못한 채 전체가 조용히 정지한다(Helm --wait 타임아웃으로
+# 뒤늦게 드러남, 그마저도 disableWait 를 켜면 안 보이게 된다 — HelmRelease
+# 자체의 disableWait 설정과는 별개로 이 값도 함께 맞춰야 한다).
+# 죽은 노드 하나가 있어도 나머지가 굴러가려면 최소 2 가 필요하다 — 죽은 노드가
+# 1 을 영구히 먹어도 건강한 노드용으로 최소 1 이 남는다.
+updateStrategy:
+  maxUnavailable: 1
+
 # 임베드된 node_exporter collector 로 node_* 전체 표면(실노드 기준 ~379 family)을
 # 같은 엔드포인트에서 제공한다. 켜면 별도 node_exporter DaemonSet 이 불요해지고,
 # 메트릭 이름·라벨·의미가 upstream 과 동일하므로 기존 대시보드와 알림 룰이

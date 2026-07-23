@@ -7,6 +7,9 @@ metadata:
     app.kubernetes.io/name: nodevitals
     app.kubernetes.io/component: smart
 spec:
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: {{ .Values.updateStrategy.maxUnavailable }}
   selector:
     matchLabels:
       app.kubernetes.io/name: nodevitals
