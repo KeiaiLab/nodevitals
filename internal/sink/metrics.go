@@ -19,6 +19,7 @@ type Metrics struct {
 	snapshot []model.Sample
 	reg      *prometheus.Registry
 	dropped  *prometheus.CounterVec
+	events   *prometheus.CounterVec
 }
 
 func NewMetrics() *Metrics {
@@ -28,8 +29,12 @@ func NewMetrics() *Metrics {
 			Name: "nodevitals_delivery_dropped_total",
 			Help: "events dropped after exhausting webhook delivery retries (silent-loss signal)",
 		}, []string{"sink"}),
+		events: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "nodevitals_events_total",
+			Help: "hardware events emitted (threshold transitions and async XID errors), counted at emission — independent of webhook delivery",
+		}, []string{"node", "tier", "device", "condition", "severity", "phase", "xid"}),
 	}
-	m.reg.MustRegister(m, m.dropped)
+	m.reg.MustRegister(m, m.dropped, m.events)
 	return m
 }
 
@@ -45,6 +50,24 @@ func (m *Metrics) Register(c prometheus.Collector) error {
 func (m *Metrics) RecordDropped(sink string, n int) {
 	if n > 0 {
 		m.dropped.WithLabelValues(sink).Add(float64(n))
+	}
+}
+
+// RecordEvents counts emitted events on the Prometheus surface, making the
+// event stream (threshold ENTER/EXIT transitions and XID errors) queryable as
+// a time series next to the nodevitals_hw_* samples — until now XID errors
+// were webhook/REST-only and invisible to a metrics stack. Counted at
+// emission, before delivery, so webhook outages can't hide hardware trouble.
+// The xid label carries the NVIDIA Xid code from Event.Detail for XID events
+// and is empty for engine (threshold) events; both code sets are small and
+// hardware-bounded, so label cardinality stays flat.
+func (m *Metrics) RecordEvents(events []model.Event) {
+	for _, e := range events {
+		xid := ""
+		if v, ok := e.Detail["xid"]; ok {
+			xid = fmt.Sprint(v)
+		}
+		m.events.WithLabelValues(e.Node, e.Tier, e.Device, e.Condition, e.Severity, e.Phase, xid).Inc()
 	}
 }
 

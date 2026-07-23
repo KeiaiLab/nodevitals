@@ -234,3 +234,42 @@ func TestHandlerServesDespiteConflictingHelpText(t *testing.T) {
 		t.Fatalf("unrelated metrics must still be served, body:\n%s", rec.Body.String())
 	}
 }
+
+// TestMetricsRecordEvents proves the event stream reaches /metrics: an async
+// XID error carries its Xid code as the xid label, an engine (threshold)
+// transition leaves it empty, and repeats accumulate as a counter.
+func TestMetricsRecordEvents(t *testing.T) {
+	m := NewMetrics()
+	xid := model.Event{
+		Node: "n1", Tier: "gpu", Device: "gpu0",
+		Condition: "gpu_xid_error", Phase: model.PhaseEnter, Severity: "critical",
+		Detail: map[string]any{"xid": uint64(79), "description": "GPU has fallen off the bus"},
+	}
+	engine := model.Event{
+		Node: "n1", Tier: "core", Device: "cpu",
+		Condition: "high_load", Phase: model.PhaseEnter, Severity: "warning",
+	}
+	m.RecordEvents([]model.Event{xid, engine})
+	m.RecordEvents([]model.Event{xid})
+
+	srv := httptest.NewServer(m.Handler())
+	defer srv.Close()
+	resp, err := http.Get(srv.URL)
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	body := string(raw)
+
+	if !strings.Contains(body, "# TYPE nodevitals_events_total counter") {
+		t.Fatalf("counter TYPE declaration missing:\n%s", body)
+	}
+	xidLine := `nodevitals_events_total{condition="gpu_xid_error",device="gpu0",node="n1",phase="ENTER",severity="critical",tier="gpu",xid="79"} 2`
+	if !strings.Contains(body, xidLine) {
+		t.Fatalf("XID event line missing or wrong count, want %q in:\n%s", xidLine, body)
+	}
+	if !strings.Contains(body, `nodevitals_events_total{condition="high_load",device="cpu",node="n1",phase="ENTER",severity="warning",tier="core",xid=""} 1`) {
+		t.Fatalf("engine event line missing (empty xid label):\n%s", body)
+	}
+}
