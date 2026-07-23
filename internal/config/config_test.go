@@ -209,3 +209,63 @@ func TestLoadDCGMCompat(t *testing.T) {
 		t.Fatal("dcgmCompat must default to disabled")
 	}
 }
+
+func TestLoadHistoryDefaults(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "c.yaml")
+	os.WriteFile(path, []byte("node: e104\ntiers: [gpu]\nhistory:\n  enabled: true\n"), 0o644)
+	c, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !c.History.Enabled {
+		t.Fatal("history.enabled: true must parse")
+	}
+	if c.History.RetentionDays != 1825 {
+		t.Fatalf("RetentionDays default = %d, want 1825", c.History.RetentionDays)
+	}
+	if c.History.IntervalMinutes != 5 {
+		t.Fatalf("IntervalMinutes default = %d, want 5", c.History.IntervalMinutes)
+	}
+	if c.History.DataDir != "/var/lib/nodevitals/history" {
+		t.Fatalf("DataDir default = %q, want /var/lib/nodevitals/history", c.History.DataDir)
+	}
+	if len(c.History.Metrics) == 0 || c.History.Metrics[0] != "gpu_utilization_pct" {
+		t.Fatalf("Metrics default = %v, want the GPU quartet", c.History.Metrics)
+	}
+
+	// Absent block stays off — no defaults applied, no hostPath dependency
+	// implied for deployments that never enable it.
+	os.WriteFile(path, []byte("node: e104\n"), 0o644)
+	c, err = Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.History.Enabled || c.History.DataDir != "" {
+		t.Fatalf("history must default to fully disabled with no defaults applied, got %+v", c.History)
+	}
+}
+
+func TestLoadHistoryExplicitOverridesSurviveDefaulting(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "c.yaml")
+	os.WriteFile(path, []byte(`node: e104
+tiers: [gpu]
+history:
+  enabled: true
+  retentionDays: 30
+  intervalMinutes: 1
+  dataDir: /custom/path
+  metrics: [gpu_utilization_pct]
+`), 0o644)
+	c, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.History.RetentionDays != 30 || c.History.IntervalMinutes != 1 || c.History.DataDir != "/custom/path" {
+		t.Fatalf("explicit history values got overwritten by defaults: %+v", c.History)
+	}
+	if len(c.History.Metrics) != 1 || c.History.Metrics[0] != "gpu_utilization_pct" {
+		t.Fatalf("explicit metrics allowlist got overwritten by defaults: %v", c.History.Metrics)
+	}
+}

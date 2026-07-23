@@ -18,6 +18,7 @@ import (
 	"github.com/KeiaiLab/nodevitals/internal/config"
 	"github.com/KeiaiLab/nodevitals/internal/dcgmcompat"
 	"github.com/KeiaiLab/nodevitals/internal/event"
+	"github.com/KeiaiLab/nodevitals/internal/history"
 	"github.com/KeiaiLab/nodevitals/internal/httpapi"
 	"github.com/KeiaiLab/nodevitals/internal/nodeexporter"
 	"github.com/KeiaiLab/nodevitals/internal/sink"
@@ -127,9 +128,29 @@ func main() {
 		slog.Info("node_exporter collectors registered", "count", neCount)
 	}
 
-	a := agent.New(cfg, &reg, eng, webhooks, metrics)
+	// Long-term downsampled history — local to this node, survives past the
+	// Prometheus scrape retention window. Opening failure is fatal (not a
+	// silent skip): the operator explicitly asked for history, and a
+	// mis-mounted hostPath failing here beats months of quietly-missing data
+	// discovered only when someone finally queries it.
+	var hist *history.Store
+	if cfg.History.Enabled {
+		hist, err = history.Open(cfg.History.DataDir, cfg.History.Metrics,
+			time.Duration(cfg.History.IntervalMinutes)*time.Minute,
+			time.Duration(cfg.History.RetentionDays)*24*time.Hour)
+		if err != nil {
+			slog.Error("open history store", "dataDir", cfg.History.DataDir, "err", err)
+			os.Exit(1)
+		}
+		defer hist.Close()
+		slog.Info("history store enabled", "dataDir", cfg.History.DataDir,
+			"retentionDays", cfg.History.RetentionDays, "intervalMinutes", cfg.History.IntervalMinutes,
+			"metrics", strings.Join(cfg.History.Metrics, ","))
+	}
 
-	mux := httpapi.NewServer(a, metrics.Handler())
+	a := agent.New(cfg, &reg, eng, webhooks, metrics, hist)
+
+	mux := httpapi.NewServer(a, metrics.Handler(), a)
 	listen := cfg.Sinks.Metrics.ListenAddr
 	if listen == "" {
 		listen = ":9847"

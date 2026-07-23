@@ -43,7 +43,7 @@ spec:
           operator: Exists
           effect: NoSchedule
       {{- end }}
-      {{- if not .Values.tiers.smart.enabled }}
+      {{- if not (or .Values.tiers.smart.enabled .Values.history.enabled) }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -71,10 +71,12 @@ spec:
             - name: metrics
               containerPort: {{ .Values.metrics.port }}
           securityContext:
-            {{- if .Values.tiers.smart.enabled }}
+            {{- if or .Values.tiers.smart.enabled .Values.history.enabled }}
             # smart 를 함께 돌리면 컨테이너가 하나뿐이라 /proc·/sys 수집까지
             # 같은 권한을 쓴다 — 최소권한을 유지하려면 singlePod 를 끄고 tier
-            # 별 DaemonSet 으로 분리한다.
+            # 별 DaemonSet 으로 분리한다. history 도 같은 조건에 얹힌다: hostPath
+            # 쓰기 대상이 root 소유로 생성되므로(DirectoryOrCreate) root 실행이
+            # 필요하다 — 별도 init container 없이 이 relax 하나로 해결.
             runAsUser: 0
             runAsNonRoot: false
             {{- if .Values.tiers.smart.privileged }}
@@ -112,6 +114,7 @@ spec:
               mountPath: /etc/nodevitals
               readOnly: true
             {{- include "nodevitals.nodeExporterMounts" . | nindent 12 }}
+            {{- include "nodevitals.historyMounts" . | nindent 12 }}
           resources:
 {{ toYaml .Values.resources | indent 12 }}
           livenessProbe:
@@ -142,4 +145,5 @@ spec:
           configMap:
             name: nodevitals
         {{- include "nodevitals.nodeExporterVolumes" . | nindent 8 }}
+        {{- include "nodevitals.historyVolumes" . | nindent 8 }}
 {{- end }}

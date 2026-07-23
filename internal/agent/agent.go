@@ -11,6 +11,7 @@ import (
 	"github.com/KeiaiLab/nodevitals/internal/collector"
 	"github.com/KeiaiLab/nodevitals/internal/config"
 	"github.com/KeiaiLab/nodevitals/internal/event"
+	"github.com/KeiaiLab/nodevitals/internal/history"
 	"github.com/KeiaiLab/nodevitals/internal/model"
 	"github.com/KeiaiLab/nodevitals/internal/queue"
 	"github.com/KeiaiLab/nodevitals/internal/sink"
@@ -22,15 +23,16 @@ type Agent struct {
 	eng      *event.Engine
 	webhooks []sink.Sink
 	metrics  *sink.Metrics
+	history  *history.Store // nil when history.enabled is false
 	backoff  queue.Backoff
 
 	mu   sync.RWMutex
 	snap []model.Sample
 }
 
-func New(cfg config.Config, reg *collector.Registry, eng *event.Engine, webhooks []sink.Sink, metrics *sink.Metrics) *Agent {
+func New(cfg config.Config, reg *collector.Registry, eng *event.Engine, webhooks []sink.Sink, metrics *sink.Metrics, hist *history.Store) *Agent {
 	return &Agent{
-		cfg: cfg, reg: reg, eng: eng, webhooks: webhooks, metrics: metrics,
+		cfg: cfg, reg: reg, eng: eng, webhooks: webhooks, metrics: metrics, history: hist,
 		backoff: queue.Backoff{Base: 500 * time.Millisecond, Max: 30 * time.Second},
 	}
 }
@@ -45,6 +47,11 @@ func (a *Agent) Tick(ctx context.Context) {
 
 	if a.metrics != nil {
 		a.metrics.Update(samples)
+	}
+	if a.history != nil {
+		if err := a.history.Ingest(samples, time.Now()); err != nil {
+			slog.Error("history ingest", "err", err)
+		}
 	}
 
 	events := a.eng.Evaluate(samples)
@@ -69,6 +76,16 @@ func (a *Agent) Snapshot() []model.Sample {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.snap
+}
+
+// QueryHistory implements httpapi.HistorySource, delegating to the
+// downsampled store when history is enabled and reporting
+// history.ErrDisabled otherwise (httpapi maps that to 404, not 500).
+func (a *Agent) QueryHistory(metric string, since time.Time, filter map[string]string) ([]history.SeriesHistory, error) {
+	if a.history == nil {
+		return nil, history.ErrDisabled
+	}
+	return a.history.Query(metric, since, filter)
 }
 
 // Run ticks on the configured interval until ctx is cancelled. It also

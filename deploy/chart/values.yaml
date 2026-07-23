@@ -59,6 +59,31 @@ nodeExporter:
 dcgmCompat:
   enabled: false
 
+# 장기보존 다운샘플링(internal/history) — Prometheus scrape retention 을 훌쩍
+# 넘겨 "이 GPU 3달/1년 사용률"에 답할 수 있게, 5분 평균 시계열을 노드 로컬
+# 파일(bbolt)에 별도 보관한다. 노드별로 로컬 보관이라(중앙 집계 아님) 조회는
+# 그 노드의 /v1/history/{metric} REST 엔드포인트로 한다.
+#
+# Ingest 는 매 tier 의 원본 샘플을 스캔하지만 disk 에는 metrics 목록에 있는
+# 것만, 그것도 5분에 1점(평균)만 남는다 — 30초 간격 원본을 그대로 몇 년치
+# 쌓는 게 아니다. hostPath 가 root 소유로 생성되므로(DirectoryOrCreate),
+# 컨테이너도 root 로 떠야 쓸 수 있다 — securityContext 가 dcgmCompat/smart 와
+# 동일하게 이 값이 true 일 때 root 로 relax 된다(별도 init container 불필요).
+history:
+  enabled: false
+  # 5년 — GPU 하드웨어 교체 주기 기준. 값 하나로 조정.
+  retentionDays: 1825
+  intervalMinutes: 5
+  # 노드 상의 실제 경로. 파드 재시작(이미지 업그레이드/노드 재부팅)에도
+  # 살아남아야 "장기보존"의 의미가 있어 hostPath — PVC 는 DaemonSet 의
+  # 노드당-1 모델과 맞지 않는다.
+  hostPath: /var/lib/nodevitals/history
+  # 컨테이너 내부 마운트 경로 = config.yaml 의 history.dataDir 과 동일해야 한다
+  # (configmap 템플릿이 이 값을 그대로 dataDir 로도 렌더).
+  mountPath: /var/lib/nodevitals/history
+  # 빈 목록이면 에이전트가 GPU 헬스 4종(util/mem/온도/전력)으로 기본 적용.
+  metrics: []
+
 # hostNetwork 는 nodeExporter.enabled 시 자동으로 켜진다. 독립적으로 강제하려면 true.
 hostNetwork: false
 

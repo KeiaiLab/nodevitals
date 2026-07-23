@@ -232,12 +232,39 @@ Events are delivered as [CloudEvents 1.0](https://cloudevents.io/) envelopes sig
 [Standard Webhooks](https://www.standardwebhooks.com/) HMAC-SHA256, so any conformant receiver
 can verify them.
 
+### Long-term downsampled history
+
+Prometheus/VictoriaMetrics retention is typically weeks, not years — a scrape stack has no
+way to answer "how has this GPU's utilization trended over the last 6 months" once the raw
+samples have expired. `history.enabled` closes that gap without a second collector: an
+in-process store ([internal/history](internal/history)) accumulates an allowlist of samples in
+memory and flushes one averaged point per series to a local [bbolt](https://github.com/etcd-io/bbolt)
+file every `history.intervalMinutes` (default 5), pruning points older than
+`history.retentionDays` (default 1825 — a 5-year hardware lifecycle horizon) on the same pass.
+Only the rollup lands on disk, never the raw scrape-interval samples, so years of history at
+5-minute resolution stays a few MB.
+
+History is **per-node, not fleet-aggregated** — each pod keeps its own file and serves it from
+its own `GET /v1/history/{metric}?range=90d&node=...&device=...` (`range` accepts `90d` or
+anything `time.ParseDuration` understands; omit it for the full retained window). The default
+metric allowlist is the GPU health quartet (`gpu_utilization_pct`, `gpu_mem_used_bytes`,
+`gpu_mem_total_bytes`, `gpu_temperature_celsius`, `gpu_power_watts`) — override
+`history.metrics` in values to track anything else `nodevitals_hw_*` emits.
+
+The chart backs this with a writable hostPath (`history.hostPath`, default
+`/var/lib/nodevitals/history`) so data survives pod restarts, not just process restarts — a
+DaemonSet pod restarts on node reboots and image upgrades, and in-memory-only history would
+reset on every one. Because a fresh hostPath directory is root-owned, enabling `history`
+relaxes the container to root the same way `tiers.smart.enabled` already does (no separate
+init container).
+
 ## Delivery surfaces
 
 | Surface              | Endpoint / transport                | Use                                            |
 | -------------------- | ----------------------------------- | ---------------------------------------------- |
 | **Webhook push**     | CloudEvents 1.0 + HMAC → your URL   | primary — hardware events to your own backend  |
 | **REST snapshot**    | `GET /v1/state`                     | on-demand current state (debugging)            |
+| **REST history**     | `GET /v1/history/{metric}`          | long-term downsampled trend (per node, `history.enabled`) |
 | **Prometheus**       | `GET /metrics`                      | drop into an existing Prometheus/Grafana stack |
 
 ## Building

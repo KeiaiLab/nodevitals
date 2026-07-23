@@ -131,3 +131,27 @@ ansible role writing SMART) drops .prom files into.
 {{- end }}
 {{- end }}
 {{- end -}}
+
+{{/*
+Writable hostPath for the long-term downsampled history store (bbolt file).
+Unlike every other mount (proc/sys/dev/rootfs/textfile/udev), this one is
+read-write — the container writes its own history.db here. The pod-level
+securityContext relaxes to root exactly when this is enabled (see
+daemonset-single.yaml / daemonset-gpu.yaml), which is what makes writing to
+a root-owned DirectoryOrCreate hostPath work without an extra init container.
+*/}}
+{{- define "nodevitals.historyMounts" -}}
+{{- if .Values.history.enabled }}
+- name: history
+  mountPath: {{ .Values.history.mountPath | quote }}
+{{- end }}
+{{- end -}}
+
+{{- define "nodevitals.historyVolumes" -}}
+{{- if .Values.history.enabled }}
+- name: history
+  hostPath:
+    path: {{ .Values.history.hostPath | quote }}
+    type: DirectoryOrCreate
+{{- end }}
+{{- end -}}

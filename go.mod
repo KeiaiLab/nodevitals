@@ -9,6 +9,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/node_exporter v1.12.1
 	github.com/prometheus/procfs v0.21.1
+	go.etcd.io/bbolt v1.5.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

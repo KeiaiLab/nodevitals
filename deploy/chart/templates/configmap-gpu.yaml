@@ -16,6 +16,17 @@ data:
     dcgmCompat:
       enabled: true
 {{- end }}
+{{- if .Values.history.enabled }}
+    history:
+      enabled: true
+      retentionDays: {{ .Values.history.retentionDays }}
+      intervalMinutes: {{ .Values.history.intervalMinutes }}
+      dataDir: {{ .Values.history.mountPath | quote }}
+      {{- with .Values.history.metrics }}
+      metrics:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+{{- end }}
     sinks:
       metrics:
         enabled: true
