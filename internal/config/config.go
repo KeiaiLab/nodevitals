@@ -64,11 +64,39 @@ type Config struct {
 	// dcgm-exporter one. Only effective when the gpu tier is enabled — there
 	// is no data to serve without it.
 	DCGMCompat DCGMCompatConfig `yaml:"dcgmCompat"`
+	// History downsamples an allowlist of metrics to 5-minute averages on
+	// local disk, so a hardware trend survives long past the Prometheus
+	// scrape retention window — see internal/history.
+	History HistoryConfig `yaml:"history"`
 }
 
 // DCGMCompatConfig configures the DCGM_FI_* compatibility surface.
 type DCGMCompatConfig struct {
 	Enabled bool `yaml:"enabled"`
+}
+
+// HistoryConfig configures the local long-term downsampled store
+// (internal/history). DataDir must be a writable, persistent path — a
+// hostPath volume in the DaemonSet, not the container's own ephemeral
+// filesystem — or history is lost on every pod restart.
+type HistoryConfig struct {
+	Enabled         bool     `yaml:"enabled"`
+	RetentionDays   int      `yaml:"retentionDays"`
+	IntervalMinutes int      `yaml:"intervalMinutes"`
+	DataDir         string   `yaml:"dataDir"`
+	Metrics         []string `yaml:"metrics"`
+}
+
+// defaultHistoryMetrics is the GPU health quartet downsampled when
+// HistoryConfig.Metrics is left empty: utilization, memory pressure,
+// temperature, and power are what actually answers "how has this GPU aged",
+// at near-zero incremental storage cost over adding just one of them.
+var defaultHistoryMetrics = []string{
+	"gpu_utilization_pct",
+	"gpu_mem_used_bytes",
+	"gpu_mem_total_bytes",
+	"gpu_temperature_celsius",
+	"gpu_power_watts",
 }
 
 // NodeExporterConfig configures the embedded node_exporter collectors. Paths
@@ -132,6 +160,20 @@ func Load(path string) (Config, error) {
 	}
 	if c.DevRoot == "" {
 		c.DevRoot = "/dev"
+	}
+	if c.History.Enabled {
+		if c.History.RetentionDays <= 0 {
+			c.History.RetentionDays = 1825 // 5y — hardware fleet lifecycle horizon
+		}
+		if c.History.IntervalMinutes <= 0 {
+			c.History.IntervalMinutes = 5
+		}
+		if c.History.DataDir == "" {
+			c.History.DataDir = "/var/lib/nodevitals/history"
+		}
+		if len(c.History.Metrics) == 0 {
+			c.History.Metrics = defaultHistoryMetrics
+		}
 	}
 	// Resolve a ${ENV} reference in webhook signing secrets so the key can be
 	// injected from a Kubernetes Secret via an env var (secretKeyRef) rather

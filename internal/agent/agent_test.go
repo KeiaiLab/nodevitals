@@ -14,6 +14,7 @@ import (
 	"github.com/KeiaiLab/nodevitals/internal/collector"
 	"github.com/KeiaiLab/nodevitals/internal/config"
 	"github.com/KeiaiLab/nodevitals/internal/event"
+	"github.com/KeiaiLab/nodevitals/internal/history"
 	"github.com/KeiaiLab/nodevitals/internal/model"
 	"github.com/KeiaiLab/nodevitals/internal/queue"
 	"github.com/KeiaiLab/nodevitals/internal/sink"
@@ -45,7 +46,7 @@ func TestTickCollectsUpdatesMetricsAndDeliversEvents(t *testing.T) {
 	cap := &captureSink{}
 	metrics := sink.NewMetrics()
 
-	a := New(cfg, &reg, eng, []sink.Sink{cap}, metrics)
+	a := New(cfg, &reg, eng, []sink.Sink{cap}, metrics, nil)
 	a.Tick(context.Background())
 
 	if len(cap.events) != 1 || cap.events[0].Phase != model.PhaseEnter {
@@ -62,7 +63,7 @@ func TestTickNoEventWhenBelowThreshold(t *testing.T) {
 	var reg collector.Registry
 	reg.Add(fixedCollector{v: 1})
 	cap := &captureSink{}
-	a := New(cfg, &reg, event.NewEngine("n", cfg.Rules), []sink.Sink{cap}, sink.NewMetrics())
+	a := New(cfg, &reg, event.NewEngine("n", cfg.Rules), []sink.Sink{cap}, sink.NewMetrics(), nil)
 	a.Tick(context.Background())
 	if len(cap.events) != 0 {
 		t.Fatalf("want no events, got %+v", cap.events)
@@ -83,7 +84,7 @@ func TestTickRecordsDroppedOnDeliveryFailure(t *testing.T) {
 	var reg collector.Registry
 	reg.Add(fixedCollector{v: 9}) // breaches → 1 ENTER event to deliver
 	metrics := sink.NewMetrics()
-	a := New(cfg, &reg, event.NewEngine("n", cfg.Rules), []sink.Sink{failSink{}}, metrics)
+	a := New(cfg, &reg, event.NewEngine("n", cfg.Rules), []sink.Sink{failSink{}}, metrics, nil)
 	a.backoff = queue.Backoff{} // zero backoff → retries are instant in the test
 
 	a.Tick(context.Background()) // delivery fails after retries → 1 dropped event
@@ -145,7 +146,7 @@ func TestRunDrainsEventSourceCollectorsToWebhooksBypassingEngine(t *testing.T) {
 	// the first (mirrors Tick's delivery loop).
 	sinks := []*chanSink{newChanSink(), newChanSink()}
 
-	a := New(cfg, &reg, eng, []sink.Sink{sinks[0], sinks[1]}, sink.NewMetrics())
+	a := New(cfg, &reg, eng, []sink.Sink{sinks[0], sinks[1]}, sink.NewMetrics(), nil)
 
 	baseGoroutines := runtime.NumGoroutine()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -185,5 +186,45 @@ func TestRunDrainsEventSourceCollectorsToWebhooksBypassingEngine(t *testing.T) {
 		default:
 			time.Sleep(5 * time.Millisecond)
 		}
+	}
+}
+
+func TestQueryHistoryReturnsErrDisabledWithoutStore(t *testing.T) {
+	a := New(config.Config{Node: "n"}, &collector.Registry{}, event.NewEngine("n", nil), nil, nil, nil)
+	_, err := a.QueryHistory("load1", time.Time{}, nil)
+	if !errors.Is(err, history.ErrDisabled) {
+		t.Fatalf("QueryHistory with no store: err = %v, want history.ErrDisabled", err)
+	}
+}
+
+func TestTickIngestsSamplesIntoHistory(t *testing.T) {
+	hist, err := history.Open(t.TempDir(), []string{"load1"}, time.Minute, time.Hour)
+	if err != nil {
+		t.Fatalf("history.Open: %v", err)
+	}
+	defer hist.Close()
+
+	cfg := config.Config{Node: "n", Tier: "core"}
+	var reg collector.Registry
+	reg.Add(fixedCollector{v: 5})
+	a := New(cfg, &reg, event.NewEngine("n", nil), nil, nil, hist)
+
+	a.Tick(context.Background()) // Tick drives history.Ingest with the real time.Now()
+	if _, err := hist.Query("load1", time.Time{}, nil); err != nil {
+		t.Fatalf("Query right after Tick: %v", err)
+	}
+	// Force the flush boundary directly through the store, comfortably past
+	// whatever real wall-clock instant Tick's internal Ingest call used, and
+	// confirm the point Tick collected is retrievable end-to-end through the
+	// Agent (not just inside the store).
+	if err := hist.Ingest(nil, time.Now().Add(2*time.Minute)); err != nil {
+		t.Fatalf("Ingest (flush): %v", err)
+	}
+	res, err := a.QueryHistory("load1", time.Time{}, nil)
+	if err != nil {
+		t.Fatalf("QueryHistory: %v", err)
+	}
+	if len(res) != 1 || len(res[0].Points) == 0 {
+		t.Fatalf("Tick's sample never reached history: %+v", res)
 	}
 }
