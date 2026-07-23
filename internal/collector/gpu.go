@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/KeiaiLab/nodevitals/internal/dcgmcompat"
 	"github.com/KeiaiLab/nodevitals/internal/model"
 )
 
@@ -18,6 +19,17 @@ type gpuDevice struct {
 	UtilGPU, MemUsedBytes, MemTotalBytes, TempC, PowerW float64
 	ThrottleReasons                                     uint64
 	EccUncorrected, EccCorrected                        float64
+	// The fields below complete the dcgm-exporter surface (dcgmcompat): an
+	// unsupported NVML call leaves its field at 0, which is also what
+	// dcgm-exporter reports for unsupported fields — parity by default.
+	MemFreeBytes, MemReservedBytes float64
+	MemCopyUtil, EncUtil, DecUtil  float64
+	SMClockMHz, MemClockMHz        float64
+	MemTempC                       float64
+	PcieReplayTotal                float64
+	EnergyMilliJoules              float64
+	RemappedCorr, RemappedUnc      float64
+	RemapFailed                    bool
 }
 
 // xidRaw is one raw XID event as delivered by the NVML EventSet subscription
@@ -38,6 +50,7 @@ type xidRaw struct {
 type gpuReader interface {
 	Read(ctx context.Context) ([]gpuDevice, error) // polled snapshot
 	XidEvents() <-chan xidRaw                      // async XID feed
+	DriverVersion() string                         // NVML driver version, "" if unknown
 	Close() error
 }
 
@@ -47,6 +60,7 @@ type gpuReader interface {
 type gpuCollector struct {
 	node   string
 	reader gpuReader
+	dcgm   *dcgmcompat.Exporter // nil = compat surface off
 	events chan model.Event
 	// seq is the per-collector monotonic event sequence. Only the XID drain
 	// goroutine (started in NewGPUCollector) increments it, but it's atomic
@@ -60,8 +74,12 @@ type gpuCollector struct {
 // model.Event on the channel Events() returns. Both the goroutine and the
 // Events() channel end when r.XidEvents() closes — the reader owns closing
 // it, mirroring how smartProbe owns the fake in smart tests.
-func NewGPUCollector(node string, r gpuReader) Collector {
-	c := &gpuCollector{node: node, reader: r, events: make(chan model.Event)}
+//
+// A non-nil dcgm receives the same polled snapshot on every Collect, keeping
+// the DCGM_FI_* compat surface in lockstep with the native samples — one NVML
+// poll feeds both, never two competing NVML sessions.
+func NewGPUCollector(node string, r gpuReader, dcgm *dcgmcompat.Exporter) Collector {
+	c := &gpuCollector{node: node, reader: r, dcgm: dcgm, events: make(chan model.Event)}
 	go func() {
 		defer close(c.events)
 		for raw := range r.XidEvents() {
@@ -100,6 +118,23 @@ func (c *gpuCollector) Collect(ctx context.Context) ([]model.Sample, error) {
 			mk("gpu_throttle_reasons", model.KindGauge, float64(d.ThrottleReasons)),
 			mk("gpu_ecc_uncorrected_total", model.KindCounter, d.EccUncorrected),
 			mk("gpu_ecc_corrected_total", model.KindCounter, d.EccCorrected),
+			// Native families for every field the DCGM compat surface carries, so
+			// consumers can finish on nodevitals_hw_* without the compat shim ever
+			// becoming the richer surface. Native units stay SI-ish (bytes, joules);
+			// only dcgmcompat renders DCGM's MiB/mJ.
+			mk("gpu_mem_free_bytes", model.KindGauge, d.MemFreeBytes),
+			mk("gpu_mem_reserved_bytes", model.KindGauge, d.MemReservedBytes),
+			mk("gpu_mem_copy_util_pct", model.KindGauge, d.MemCopyUtil),
+			mk("gpu_encoder_util_pct", model.KindGauge, d.EncUtil),
+			mk("gpu_decoder_util_pct", model.KindGauge, d.DecUtil),
+			mk("gpu_sm_clock_mhz", model.KindGauge, d.SMClockMHz),
+			mk("gpu_mem_clock_mhz", model.KindGauge, d.MemClockMHz),
+			mk("gpu_memory_temperature_celsius", model.KindGauge, d.MemTempC),
+			mk("gpu_pcie_replay_total", model.KindCounter, d.PcieReplayTotal),
+			mk("gpu_energy_joules_total", model.KindCounter, d.EnergyMilliJoules/1000),
+			mk("gpu_remapped_rows_corrected_total", model.KindCounter, d.RemappedCorr),
+			mk("gpu_remapped_rows_uncorrected_total", model.KindCounter, d.RemappedUnc),
+			mk("gpu_row_remap_failed", model.KindGauge, boolToFloat(d.RemapFailed)),
 		)
 		// G4: emit one gpu_throttle_active gauge per *performance-limiting* reason
 		// bit, alongside the raw mask sample above. Benign clock reasons (idle,
@@ -116,7 +151,37 @@ func (c *gpuCollector) Collect(ctx context.Context) ([]model.Sample, error) {
 			out = append(out, model.Sample{Node: c.node, Tier: "gpu", Device: device, Metric: "gpu_throttle_active", Kind: model.KindGauge, Value: 1, Labels: lbls, Timestamp: now})
 		}
 	}
+	if c.dcgm != nil {
+		c.dcgm.Update(c.reader.DriverVersion(), toDCGMDevices(devices))
+	}
 	return out, nil
+}
+
+func boolToFloat(b bool) float64 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// toDCGMDevices converts the reader snapshot into dcgmcompat's neutral type —
+// a straight field copy; unit conversion is dcgmcompat's job.
+func toDCGMDevices(devices []gpuDevice) []dcgmcompat.Device {
+	out := make([]dcgmcompat.Device, 0, len(devices))
+	for _, d := range devices {
+		out = append(out, dcgmcompat.Device{
+			Index: d.Index, UUID: d.UUID, Model: d.Name, PCIBusID: d.PCIBusID,
+			UtilGPU: d.UtilGPU, MemCopyUtil: d.MemCopyUtil, EncUtil: d.EncUtil, DecUtil: d.DecUtil,
+			FBUsedBytes: d.MemUsedBytes, FBFreeBytes: d.MemFreeBytes, FBRsvdBytes: d.MemReservedBytes,
+			TempC: d.TempC, MemTempC: d.MemTempC,
+			PowerW:            d.PowerW,
+			EnergyMilliJoules: d.EnergyMilliJoules,
+			SMClockMHz:        d.SMClockMHz, MemClockMHz: d.MemClockMHz,
+			PcieReplayTotal: d.PcieReplayTotal,
+			RemappedCorr:    d.RemappedCorr, RemappedUnc: d.RemappedUnc, RemapFailed: d.RemapFailed,
+		})
+	}
+	return out
 }
 
 // Events returns the channel of classified XID events wired at construction,

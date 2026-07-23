@@ -46,6 +46,19 @@ nodeExporter:
   # 예: ["--no-collector.zfs", "--no-collector.btrfs"]
   extraFlags: []
 
+# dcgm-exporter 호환 DCGM_FI_* 표면. gpu tier 의 NVML 스냅샷에서 라이브
+# dcgm-exporter 와 이름·HELP·타입·단위(MiB/mJ)·식별 라벨(gpu/UUID/pci_bus_id/
+# device/modelName/Hostname/DCGM_FI_DRIVER_VERSION)이 동일한 18개 메트릭을
+# 같은 /metrics 로 낸다. 켜면 별도 dcgm-exporter DaemonSet(gpu-operator 의
+# dcgmExporter.enabled) 은퇴의 전제가 된다 — nodeExporter 임베드의 GPU 판.
+#
+# 미포함(의도): dcgm-exporter 가 kubelet pod-resources 소켓에서 붙이는
+# container/namespace/pod 귀속 라벨. 미할당 GPU 는 빈 라벨이라 수집 결과가
+# 동일하고, 실귀속은 pod-resources 클라이언트가 필요한 별도 증분이다.
+# gpu tier 가 꺼져 있으면 무효(데이터 원천이 없다).
+dcgmCompat:
+  enabled: false
+
 # hostNetwork 는 nodeExporter.enabled 시 자동으로 켜진다. 독립적으로 강제하려면 true.
 hostNetwork: false
 

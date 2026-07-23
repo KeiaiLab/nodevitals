@@ -210,6 +210,24 @@ sinks:
 (The Helm chart exposes the metrics port as `metrics.port` in `values.yaml` and renders the
 matching `listenAddr` into the pod's ConfigMap for you.)
 
+### Drop-in exporter compatibility
+
+Two opt-in blocks make `/metrics` a drop-in replacement for the exporters nodevitals retires,
+so existing dashboards and alert rules keep working unchanged:
+
+- `nodeExporter.enabled` embeds upstream node_exporter's collectors — the full `node_*`
+  surface, identical names/labels/semantics (see [Third-party notices](#third-party-notices)).
+- `dcgmCompat.enabled` re-emits the gpu tier's NVML snapshot as the 18-metric
+  `DCGM_FI_*` surface of dcgm-exporter — names, HELP text, value types, units
+  (framebuffer MiB, energy mJ) and identity labels
+  (`gpu`/`UUID`/`pci_bus_id`/`device`/`modelName`/`Hostname`/`DCGM_FI_DRIVER_VERSION`)
+  matched against a live dcgm-exporter 4.x. Fields the hardware can't answer
+  (memory temp / remapped rows on consumer GPUs, vGPU license) read 0, exactly as
+  dcgm-exporter reports them. Not carried (yet): the `container`/`namespace`/`pod`
+  GPU-attribution labels dcgm-exporter derives from the kubelet pod-resources socket —
+  an unallocated GPU's empty labels are dropped at ingestion anyway, so those series are
+  byte-identical; real attribution is a planned increment behind its own flag.
+
 Events are delivered as [CloudEvents 1.0](https://cloudevents.io/) envelopes signed with
 [Standard Webhooks](https://www.standardwebhooks.com/) HMAC-SHA256, so any conformant receiver
 can verify them.
