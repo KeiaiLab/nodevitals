@@ -26,27 +26,21 @@ spec:
       {{- with .Values.tiers.gpu.runtimeClassName }}
       runtimeClassName: {{ . | quote }}
       {{- end }}
-      {{- if not .Values.history.enabled }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
         seccompProfile:
           type: RuntimeDefault
-      {{- else }}
-      # history 의 hostPath 는 root 소유로 생성된다(DirectoryOrCreate) — 쓰기에
-      # root 실행이 필요하다. singlePod 모드의 동일 relax 와 일관.
-      securityContext:
-        runAsUser: 0
-        runAsNonRoot: false
-        seccompProfile:
-          type: RuntimeDefault
-      {{- end }}
       nodeSelector:
         nvidia.com/gpu.present: "true"
       tolerations:
         - key: nvidia.com/gpu
           operator: Exists
           effect: NoSchedule
+      {{- with (include "nodevitals.historyInitContainers" (dict "ctx" . "alreadyRoot" false)) }}
+      initContainers:
+        {{- . | nindent 8 }}
+      {{- end }}
       containers:
         - name: nodevitals
           image: {{ include "nodevitals.image" . | quote }}
