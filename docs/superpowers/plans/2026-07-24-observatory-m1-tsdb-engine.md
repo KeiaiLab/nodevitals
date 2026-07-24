@@ -1068,7 +1068,63 @@ func TestChunkFromBytes_짧은_입력을_거부한다(t *testing.T) {
 		t.Fatalf("2바이트 미만은 ErrInvalidChunk 여야 한다, got %v", err)
 	}
 }
+
+func TestChunkFromBytes_샘플수가_과대하면_거부한다(t *testing.T) {
+	c := NewChunk()
+	for i := 0; i < 10; i++ {
+		if err := c.Append(int64(i)*15000, float64(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	raw := c.Bytes()
+	// 헤더의 샘플 수를 실제보다 크게 조작하면 디코더가 스트림 끝을 넘어
+	// 읽으려 해 EOF 가 나고, ChunkFromBytes 가 ErrInvalidChunk 를 낸다.
+	binary.BigEndian.PutUint16(raw[:2], 200)
+
+	if _, err := ChunkFromBytes(raw); !errors.Is(err, ErrInvalidChunk) {
+		t.Fatalf("과대 샘플 수는 ErrInvalidChunk 여야 한다, got %v", err)
+	}
+}
+
+func TestChunkFromBytes_샘플수가_과소하면_조용히_잘린다(t *testing.T) {
+	// 알려진 한계를 고정하는 테스트다. 헤더가 실제보다 적은 샘플 수를 주장하면
+	// 디코더는 그만큼만 읽고 정상 종료한다 — 청크 계층은 자기 기술 헤더를
+	// 신뢰하며, 저장 매체 손상 탐지는 상위 계층(WAL 의 CRC32C, 블록의 무결성
+	// 검사)의 책임이다. 이 동작이 바뀌면 이 테스트가 알려준다.
+	c := NewChunk()
+	for i := 0; i < 10; i++ {
+		if err := c.Append(int64(i)*15000, float64(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	raw := c.Bytes()
+	binary.BigEndian.PutUint16(raw[:2], 3)
+
+	restored, err := ChunkFromBytes(raw)
+	if err != nil {
+		t.Fatalf("과소 샘플 수는 현 설계상 에러가 아니다: %v", err)
+	}
+	if restored.NumSamples() != 3 {
+		t.Fatalf("헤더가 주장한 만큼만 읽어야 한다: got %d", restored.NumSamples())
+	}
+}
+
+func TestChunkFromBytes_헤더만_있는_빈_청크(t *testing.T) {
+	// n == 0 분기 — minT/maxT 복원 루프를 건너뛰고 즉시 반환한다.
+	restored, err := ChunkFromBytes([]byte{0, 0})
+	if err != nil {
+		t.Fatalf("빈 청크는 유효하다: %v", err)
+	}
+	if restored.NumSamples() != 0 {
+		t.Fatalf("NumSamples: got %d, want 0", restored.NumSamples())
+	}
+	if restored.Iterator().Next() {
+		t.Fatal("빈 청크에서 샘플이 나왔다")
+	}
+}
 ```
+
+> 위 테스트는 `encoding/binary` 를 import 한다.
 
 - [ ] **Step 2: 실패 확인**
 
@@ -1114,7 +1170,7 @@ func NewChunk() *Chunk {
 }
 
 func (c *Chunk) Append(t int64, v float64) error {
-	if c.numSamples >= maxSamplesPerChunk {
+	if c.Full() {
 		return ErrChunkFull
 	}
 	if c.numSamples > 0 && t < c.maxT {
@@ -1137,6 +1193,9 @@ func (c *Chunk) Full() bool      { return c.numSamples >= maxSamplesPerChunk }
 
 // Bytes 는 [2바이트 샘플 수][비트스트림] 형태로 직렬화한다. 샘플 수를 앞에
 // 두어야 ChunkFromBytes 가 외부 메타 없이 자족적으로 복원된다.
+//
+// 반환값은 호출 시점의 독립 복사본이다 — 이후 Append 가 내부 스트림을
+// 늘려도 이미 넘겨준 바이트는 바뀌지 않는다.
 func (c *Chunk) Bytes() []byte {
 	out := make([]byte, 2, 2+len(c.b.stream))
 	binary.BigEndian.PutUint16(out, c.numSamples)
