@@ -71,6 +71,21 @@ nodeExporter:
 dcgmCompat:
   enabled: false
 
+# smartctl_exporter 호환 smartctl_* 표면. smart tier 의 SMART 스냅샷에서 라이브
+# smartctl_exporter 0.14.0 과 이름·HELP·타입·단위(전원인가시간은 시간이 아니라
+# 초)·식별 라벨(device/temperature_type/attribute_*)이 동일한 8개 메트릭을 같은
+# /metrics 로 낸다. 켜면 별도 smartctl_exporter DaemonSet 은퇴의 전제가 된다 —
+# nodeExporter 임베드의 스토리지 판. NVMe 는 네임스페이스(nvme0n1)가 아니라
+# smartctl 과 같은 컨트롤러 표기(nvme0)로 라벨링된다.
+#
+# 미포함(의도): attribute_flags_long/short 라벨(ioctl 경로는 raw 값만 읽고,
+# 플래그는 펌웨어별로 달라 상수화하면 일부 장비에서 거짓이 된다 — 빈 라벨은
+# 어차피 수집 시 버려지므로 생략이 같은 결과), value/worst/thresh 정규화값,
+# 그리고 smartctl 의 JSON identity/log 페이지에서만 오는 capacity·rotation_rate·
+# power_cycle_count·smart_status 등. smart tier 가 꺼져 있으면 무효.
+smartctlCompat:
+  enabled: false
+
 # 장기보존 다운샘플링(internal/history) — Prometheus scrape retention 을 훌쩍
 # 넘겨 "이 GPU 3달/1년 사용률"에 답할 수 있게, 5분 평균 시계열을 노드 로컬
 # 파일(bbolt)에 별도 보관한다. 노드별로 로컬 보관이라(중앙 집계 아님) 조회는

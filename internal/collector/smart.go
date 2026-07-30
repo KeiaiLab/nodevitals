@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/KeiaiLab/nodevitals/internal/model"
+	"github.com/KeiaiLab/nodevitals/internal/smartctlcompat"
 )
 
 // smartDevice is a neutral parse result for one storage device's SMART
@@ -55,12 +56,18 @@ func isWholeDevice(name string) bool {
 type smartCollector struct {
 	node  string
 	probe smartProbe
+	sc    *smartctlcompat.Exporter // nil = compat surface off
 }
 
 // NewSmart reports disk SMART health (SATA attributes, NVMe health log) via
 // an injected probe.
-func NewSmart(node string, probe smartProbe) Collector {
-	return &smartCollector{node: node, probe: probe}
+//
+// A non-nil sc receives the same probed snapshot on every Collect, keeping the
+// smartctl_* compat surface in lockstep with the native samples — one ioctl
+// sweep feeds both, never two competing SMART probes. This mirrors how
+// NewGPUCollector feeds dcgmcompat from a single NVML poll.
+func NewSmart(node string, probe smartProbe, sc *smartctlcompat.Exporter) Collector {
+	return &smartCollector{node: node, probe: probe, sc: sc}
 }
 
 func (c *smartCollector) Name() string { return "smart" }
@@ -109,5 +116,36 @@ func (c *smartCollector) Collect(ctx context.Context) ([]model.Sample, error) {
 			out = append(out, mk("nvme_critical_warning", d.NVMe.CriticalWarning))
 		}
 	}
+	if c.sc != nil {
+		c.sc.Update(toSmartctlDevices(devices))
+	}
 	return out, nil
+}
+
+// toSmartctlDevices projects the probed snapshot onto the compat package's
+// own Device type. The probe hands back freshly built values on every call and
+// the collector keeps no reference to them afterwards, so handing the pointers
+// and the attribute map straight over is safe — the exporter becomes their
+// only owner the moment Update returns.
+func toSmartctlDevices(devices []smartDevice) []smartctlcompat.Device {
+	out := make([]smartctlcompat.Device, 0, len(devices))
+	for _, d := range devices {
+		sd := smartctlcompat.Device{
+			Name:         d.Name,
+			Temperature:  d.Temperature,
+			PowerOnHours: d.PowerOnHours,
+			ATAAttrs:     d.ATAAttrs,
+		}
+		if d.NVMe != nil {
+			sd.NVMe = &smartctlcompat.NVMe{
+				PercentageUsed:  d.NVMe.PercentageUsed,
+				AvailableSpare:  d.NVMe.AvailableSpare,
+				SpareThreshold:  d.NVMe.SpareThreshold,
+				MediaErrors:     d.NVMe.MediaErrors,
+				CriticalWarning: d.NVMe.CriticalWarning,
+			}
+		}
+		out = append(out, sd)
+	}
+	return out
 }

@@ -227,6 +227,20 @@ so existing dashboards and alert rules keep working unchanged:
   GPU-attribution labels dcgm-exporter derives from the kubelet pod-resources socket —
   an unallocated GPU's empty labels are dropped at ingestion anyway, so those series are
   byte-identical; real attribution is a planned increment behind its own flag.
+- `smartctlCompat.enabled` re-emits the smart tier's SMART snapshot as the 8-metric
+  `smartctl_*` surface of smartctl_exporter — names, HELP text, value types, units
+  (power-on in **seconds**, not hours) and identity labels
+  (`device`/`temperature_type`/`attribute_id`/`attribute_name`/`attribute_value_type`)
+  matched against a live smartctl_exporter 0.14.0. NVMe devices are labelled by
+  controller (`nvme0`), the way smartctl addresses them, not by namespace (`nvme0n1`).
+  A field the device never reported is skipped rather than zeroed — a zero
+  `available_spare` would read as a worn-out drive. Not carried: the
+  `attribute_flags_long`/`_short` labels (the ioctl path reads raw values, not the
+  flag byte, and the flags are per-firmware — one live node reports `PO--CK` for id 5
+  on a WDC disk and `-O--CK` for id 187 on a Seagate — so a constant table would be
+  wrong for some fleet; empty labels are dropped at ingestion, making omission the
+  same stored series), the `value`/`worst`/`thresh` normalised triple, and the
+  identity/capacity families that come only from smartctl's JSON pages.
 
 Events are delivered as [CloudEvents 1.0](https://cloudevents.io/) envelopes signed with
 [Standard Webhooks](https://www.standardwebhooks.com/) HMAC-SHA256, so any conformant receiver

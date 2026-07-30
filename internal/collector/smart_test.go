@@ -3,9 +3,13 @@ package collector
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
 	"github.com/KeiaiLab/nodevitals/internal/model"
+	"github.com/KeiaiLab/nodevitals/internal/smartctlcompat"
 )
 
 func f64ptr(v float64) *float64 { return &v }
@@ -27,7 +31,7 @@ func TestSmartSATAMapping(t *testing.T) {
 			},
 		}}, nil
 	}
-	c := NewSmart("test-node", probe)
+	c := NewSmart("test-node", probe, nil)
 	got, err := c.Collect(context.Background())
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
@@ -89,7 +93,7 @@ func TestSmartNVMeMapping(t *testing.T) {
 			},
 		}}, nil
 	}
-	c := NewSmart("test-node", probe)
+	c := NewSmart("test-node", probe, nil)
 	got, err := c.Collect(context.Background())
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
@@ -166,7 +170,7 @@ func TestSmartMixedSATANVMeMapping(t *testing.T) {
 			},
 		}, nil
 	}
-	c := NewSmart("test-node", probe)
+	c := NewSmart("test-node", probe, nil)
 	got, err := c.Collect(context.Background())
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
@@ -238,7 +242,7 @@ func TestSmartMixedSATANVMeMapping(t *testing.T) {
 func TestSmartCollectWrapsProbeError(t *testing.T) {
 	probeErr := errors.New("ioctl: permission denied")
 	probe := func(ctx context.Context) ([]smartDevice, error) { return nil, probeErr }
-	c := NewSmart("n", probe)
+	c := NewSmart("n", probe, nil)
 
 	_, err := c.Collect(context.Background())
 	if err == nil {
@@ -251,7 +255,7 @@ func TestSmartCollectWrapsProbeError(t *testing.T) {
 
 func TestSmartZeroDevicesYieldsZeroSamplesNoError(t *testing.T) {
 	probe := func(ctx context.Context) ([]smartDevice, error) { return nil, nil }
-	c := NewSmart("n", probe)
+	c := NewSmart("n", probe, nil)
 
 	got, err := c.Collect(context.Background())
 	if err != nil {
@@ -259,5 +263,71 @@ func TestSmartZeroDevicesYieldsZeroSamplesNoError(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Fatalf("want 0 samples, got %d: %+v", len(got), got)
+	}
+}
+
+func TestSmartCollectFeedsSmartctlCompatExporter(t *testing.T) {
+	// One Collect must land the same probe sweep on both surfaces: native
+	// samples (power-on in hours, namespace device name) and the smartctl
+	// compat exporter (seconds and controller name at render time).
+	probe := func(ctx context.Context) ([]smartDevice, error) {
+		return []smartDevice{{
+			Name:         "nvme0n1",
+			Transport:    "nvme",
+			Temperature:  f64ptr(47),
+			PowerOnHours: u64ptr(24871),
+			NVMe:         &nvmeHealth{PercentageUsed: 7, AvailableSpare: 100, SpareThreshold: 5},
+		}}, nil
+	}
+	sc := smartctlcompat.New()
+	c := NewSmart("test-node", probe, sc)
+
+	got, err := c.Collect(context.Background())
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+
+	// Native power-on stays in hours, on the namespace device name.
+	var seen bool
+	for _, s := range got {
+		if s.Metric != "smart_power_on_hours" {
+			continue
+		}
+		seen = true
+		if s.Value != 24871 {
+			t.Fatalf("smart_power_on_hours = %v, want 24871", s.Value)
+		}
+		if s.Device != "nvme0n1" {
+			t.Fatalf("native device = %q, want nvme0n1", s.Device)
+		}
+	}
+	if !seen {
+		t.Fatal("native smart_power_on_hours sample missing")
+	}
+
+	// The exporter renders the same sweep in smartctl's units and naming:
+	// 24871h * 3600 == 8.95356e+07 s, device="nvme0" not "nvme0n1".
+	exp := `# HELP smartctl_device_percentage_used Device write percentage used
+# TYPE smartctl_device_percentage_used counter
+smartctl_device_percentage_used{device="nvme0"} 7
+# HELP smartctl_device_power_on_seconds Device power on seconds
+# TYPE smartctl_device_power_on_seconds counter
+smartctl_device_power_on_seconds{device="nvme0"} 8.95356e+07
+`
+	if err := testutil.CollectAndCompare(sc, strings.NewReader(exp),
+		"smartctl_device_percentage_used", "smartctl_device_power_on_seconds"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A nil exporter is the compat-off path and must stay a no-op, not a panic.
+func TestSmartCollectWithoutCompatExporter(t *testing.T) {
+	probe := func(ctx context.Context) ([]smartDevice, error) {
+		return []smartDevice{{Name: "sda", Transport: "sata", Temperature: f64ptr(36)}}, nil
+	}
+	c := NewSmart("n", probe, nil)
+
+	if _, err := c.Collect(context.Background()); err != nil {
+		t.Fatalf("Collect with nil compat exporter: %v", err)
 	}
 }
