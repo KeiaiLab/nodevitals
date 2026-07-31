@@ -54,6 +54,7 @@ func main() {
 			reg.Add(collector.NewHwmon(cfg.Node, cfg.SysRoot))
 			reg.Add(collector.NewPSI(cfg.Node, cfg.ProcRoot))
 			reg.Add(collector.NewPower(cfg.Node, cfg.SysRoot))
+			reg.Add(collector.NewPCIeAER(cfg.Node, cfg.SysRoot))
 		case "smart":
 			// Registered only when the smart tier runs: a node whose disks the
 			// probe cannot read then serves zero smartctl_* series, exactly
