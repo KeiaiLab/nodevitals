@@ -53,6 +53,8 @@ func New(procRoot, rootFS string, log *slog.Logger) *Exporter {
 			newEntropy(procRoot),
 			newProcs(procRoot),
 			newVMStat(procRoot),
+			newUname(realUname),
+			newOSRelease(rootFS),
 		},
 	}
 }
