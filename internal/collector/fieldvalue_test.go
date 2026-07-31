@@ -20,7 +20,7 @@ func TestDecodeFieldValue(t *testing.T) {
 		{"unsigned long", 2, le64(1 << 40), 1 << 40},
 		{"unsigned long long", 3, le64(32972735665), 32972735665},
 		{"signed long long negative", 4, le64(uint64(math.MaxUint64)), -1}, // -1 two's complement
-		{"signed int negative", 5, le64(uint64(math.MaxUint32)), -1},      // low 4 bytes = -1
+		{"signed int negative", 5, le64(uint64(math.MaxUint32)), -1},       // low 4 bytes = -1
 		{"unsigned short", 6, le64(65535), 65535},
 		{"unknown type", 7, le64(42), 0},
 	}
