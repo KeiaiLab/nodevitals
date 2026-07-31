@@ -210,6 +210,28 @@ func TestLoadDCGMCompat(t *testing.T) {
 	}
 }
 
+func TestLoadSmartctlCompat(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "c.yaml")
+	os.WriteFile(path, []byte("node: e21\ntiers: [smart]\nsmartctlCompat:\n  enabled: true\n"), 0o644)
+	c, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !c.SmartctlCompat.Enabled {
+		t.Fatal("smartctlCompat.enabled: true must parse")
+	}
+	// Absent block stays off — the compat surface is opt-in.
+	os.WriteFile(path, []byte("node: e21\n"), 0o644)
+	c, err = Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.SmartctlCompat.Enabled {
+		t.Fatal("smartctlCompat must default to disabled")
+	}
+}
+
 func TestLoadHistoryDefaults(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "c.yaml")

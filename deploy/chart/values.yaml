@@ -71,6 +71,27 @@ nodeExporter:
 dcgmCompat:
   enabled: false
 
+# smartctl_exporter 호환 smartctl_* 표면. smart tier 의 SMART 스냅샷에서 라이브
+# smartctl_exporter 0.14.0 의 25 패밀리 중 22개를 이름·HELP·타입·단위(전원인가
+# 시간은 시간이 아니라 초, NVMe 호스트 I/O 는 512B 단위가 아니라 바이트)·식별
+# 라벨까지 동일하게 같은 /metrics 로 낸다. 전체 속성 테이블(raw/value/worst/
+# thresh 4종 + attribute_flags 2종)·device info·용량/블록크기/회전수/인터페이스
+# 속도·SMART 종합상태 포함. 켜면 별도 smartctl_exporter DaemonSet 은퇴의 전제가
+# 된다 — nodeExporter 임베드의 스토리지 판. NVMe 는 네임스페이스(nvme0n1)가
+# 아니라 smartctl 과 같은 컨트롤러 표기(nvme0)로 라벨링된다.
+#
+# 어느 패밀리가 어느 transport 에 나오는지는 "데이터가 있느냐"가 아니라 라이브
+# 스크레이프를 따른다 — bytes_read 는 NVMe 전용, rotation_rate 는 SATA 전용.
+# 원본이 안 내는 걸 내는 것도 계약 위반이기 때문.
+#
+# 미포함 3종(의도): smartctl_version / smartctl_exporter_build_info /
+# smartctl_device_smartctl_exit_status — 전부 하드웨어가 아니라 smartctl_exporter
+# *프로세스* 자체의 사실이라 nodevitals 가 내면 거짓이 된다(특히 exit_status 는
+# 0/1 이 아니라 64="에러로그 비어있지 않음" 같은 코드를 나르므로, 0 으로 채우면
+# 그 신호를 조용히 덮는다). smart tier 가 꺼져 있으면 무효.
+smartctlCompat:
+  enabled: false
+
 # 장기보존 다운샘플링(internal/history) — Prometheus scrape retention 을 훌쩍
 # 넘겨 "이 GPU 3달/1년 사용률"에 답할 수 있게, 5분 평균 시계열을 노드 로컬
 # 파일(bbolt)에 별도 보관한다. 노드별로 로컬 보관이라(중앙 집계 아님) 조회는

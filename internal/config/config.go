@@ -64,6 +64,11 @@ type Config struct {
 	// dcgm-exporter one. Only effective when the gpu tier is enabled — there
 	// is no data to serve without it.
 	DCGMCompat DCGMCompatConfig `yaml:"dcgmCompat"`
+	// SmartctlCompat serves a smartctl_exporter-compatible smartctl_* surface
+	// from the smart tier's SMART snapshot, so one DaemonSet can replace a
+	// separate smartctl_exporter one. Only effective when the smart tier is
+	// enabled — there is no data to serve without it.
+	SmartctlCompat SmartctlCompatConfig `yaml:"smartctlCompat"`
 	// History downsamples an allowlist of metrics to 5-minute averages on
 	// local disk, so a hardware trend survives long past the Prometheus
 	// scrape retention window — see internal/history.
@@ -72,6 +77,11 @@ type Config struct {
 
 // DCGMCompatConfig configures the DCGM_FI_* compatibility surface.
 type DCGMCompatConfig struct {
+	Enabled bool `yaml:"enabled"`
+}
+
+// SmartctlCompatConfig configures the smartctl_* compatibility surface.
+type SmartctlCompatConfig struct {
 	Enabled bool `yaml:"enabled"`
 }
 

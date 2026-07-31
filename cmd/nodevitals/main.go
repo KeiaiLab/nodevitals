@@ -22,6 +22,7 @@ import (
 	"github.com/KeiaiLab/nodevitals/internal/httpapi"
 	"github.com/KeiaiLab/nodevitals/internal/nodeexporter"
 	"github.com/KeiaiLab/nodevitals/internal/sink"
+	"github.com/KeiaiLab/nodevitals/internal/smartctlcompat"
 )
 
 func main() {
@@ -54,7 +55,19 @@ func main() {
 			reg.Add(collector.NewPSI(cfg.Node, cfg.ProcRoot))
 			reg.Add(collector.NewPower(cfg.Node, cfg.SysRoot))
 		case "smart":
-			reg.Add(collector.NewSmart(cfg.Node, collector.NewDevProbe(cfg.DevRoot)))
+			// Registered only when the smart tier runs: a node whose disks the
+			// probe cannot read then serves zero smartctl_* series, exactly
+			// like the smartctl_exporter DaemonSet that finds nothing there.
+			var sc *smartctlcompat.Exporter
+			if cfg.SmartctlCompat.Enabled {
+				sc = smartctlcompat.New()
+				if err := metrics.Register(sc); err != nil {
+					slog.Error("register smartctl compat exporter", "err", err)
+					os.Exit(1)
+				}
+				slog.Info("smartctl compat surface enabled")
+			}
+			reg.Add(collector.NewSmart(cfg.Node, collector.NewDevProbe(cfg.DevRoot), sc))
 		case "gpu":
 			r, err := collector.NewNVMLReader()
 			if err != nil {

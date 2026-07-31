@@ -13,6 +13,10 @@ data:
     devRoot: /host/dev
     rules:
 {{ toYaml .Values.smartRules | indent 6 }}
+{{- if .Values.smartctlCompat.enabled }}
+    smartctlCompat:
+      enabled: true
+{{- end }}
 {{- if .Values.history.enabled }}
     history:
       enabled: true
