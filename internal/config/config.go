@@ -116,6 +116,12 @@ type NodeExporterConfig struct {
 	TextfileDir string   `yaml:"textfileDir"`
 	RootFSPath  string   `yaml:"rootfsPath"`
 	ExtraFlags  []string `yaml:"extraFlags"`
+	// NativeCollectors serves the node_* groups nodevitals implements itself
+	// (internal/nodecompat) instead of the embedded upstream ones. Every group
+	// it serves MUST also be disabled through ExtraFlags with
+	// --no-collector.<name>: two collectors emitting one metric name make the
+	// registry reject the entire scrape, not just the duplicate.
+	NativeCollectors bool `yaml:"nativeCollectors"`
 }
 
 // ResolvedTiers returns the tiers to run, in config order and de-duplicated.

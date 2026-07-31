@@ -20,6 +20,7 @@ import (
 	"github.com/KeiaiLab/nodevitals/internal/event"
 	"github.com/KeiaiLab/nodevitals/internal/history"
 	"github.com/KeiaiLab/nodevitals/internal/httpapi"
+	"github.com/KeiaiLab/nodevitals/internal/nodecompat"
 	"github.com/KeiaiLab/nodevitals/internal/nodeexporter"
 	"github.com/KeiaiLab/nodevitals/internal/sink"
 	"github.com/KeiaiLab/nodevitals/internal/smartctlcompat"
@@ -140,6 +141,18 @@ func main() {
 			os.Exit(1)
 		}
 		slog.Info("node_exporter collectors registered", "count", neCount)
+	}
+
+	// Native node_* groups. Registered independently of the embedded set so a
+	// deployment can run either, but never both for the same group — the
+	// chart pairs this flag with the matching --no-collector.* entries.
+	if cfg.NodeExporter.NativeCollectors {
+		nc := nodecompat.New(cfg.ProcRoot, cfg.NodeExporter.RootFSPath, slog.Default())
+		if err := metrics.Register(nc); err != nil {
+			slog.Error("register native node collectors", "err", err)
+			os.Exit(1)
+		}
+		slog.Info("native node_* collectors enabled")
 	}
 
 	// Long-term downsampled history — local to this node, survives past the

@@ -20,6 +20,9 @@ data:
       {{- if .Values.nodeExporter.mountRootFS }}
       rootfsPath: /host/root
       {{- end }}
+      {{- if .Values.nodeExporter.nativeCollectors }}
+      nativeCollectors: true
+      {{- end }}
       {{- with .Values.nodeExporter.textfileDir }}
       textfileDir: {{ . | quote }}
       {{- end }}

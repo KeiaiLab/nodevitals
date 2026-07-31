@@ -291,3 +291,26 @@ history:
 		t.Fatalf("explicit metrics allowlist got overwritten by defaults: %v", c.History.Metrics)
 	}
 }
+
+func TestLoadNativeCollectors(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "c.yaml")
+	os.WriteFile(path, []byte("node: e21\nnodeExporter:\n  enabled: true\n  nativeCollectors: true\n"), 0o644)
+	c, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !c.NodeExporter.NativeCollectors {
+		t.Fatal("nodeExporter.nativeCollectors: true must parse")
+	}
+	// Absent block stays off — the native surface is opt-in until every group
+	// has a live parity check.
+	os.WriteFile(path, []byte("node: e21\n"), 0o644)
+	c, err = Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.NodeExporter.NativeCollectors {
+		t.Fatal("nativeCollectors must default to disabled")
+	}
+}
