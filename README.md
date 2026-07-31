@@ -227,20 +227,26 @@ so existing dashboards and alert rules keep working unchanged:
   GPU-attribution labels dcgm-exporter derives from the kubelet pod-resources socket —
   an unallocated GPU's empty labels are dropped at ingestion anyway, so those series are
   byte-identical; real attribution is a planned increment behind its own flag.
-- `smartctlCompat.enabled` re-emits the smart tier's SMART snapshot as the 8-metric
-  `smartctl_*` surface of smartctl_exporter — names, HELP text, value types, units
-  (power-on in **seconds**, not hours) and identity labels
-  (`device`/`temperature_type`/`attribute_id`/`attribute_name`/`attribute_value_type`)
-  matched against a live smartctl_exporter 0.14.0. NVMe devices are labelled by
-  controller (`nvme0`), the way smartctl addresses them, not by namespace (`nvme0n1`).
-  A field the device never reported is skipped rather than zeroed — a zero
-  `available_spare` would read as a worn-out drive. Not carried: the
-  `attribute_flags_long`/`_short` labels (the ioctl path reads raw values, not the
-  flag byte, and the flags are per-firmware — one live node reports `PO--CK` for id 5
-  on a WDC disk and `-O--CK` for id 187 on a Seagate — so a constant table would be
-  wrong for some fleet; empty labels are dropped at ingestion, making omission the
-  same stored series), the `value`/`worst`/`thresh` normalised triple, and the
-  identity/capacity families that come only from smartctl's JSON pages.
+- `smartctlCompat.enabled` re-emits the smart tier's SMART snapshot as the `smartctl_*`
+  surface of smartctl_exporter — **22 of its 25 families**, with names, HELP text,
+  value types, units (power-on in **seconds** not hours, NVMe host I/O in bytes not
+  512-byte units) and every identity label matched against a live smartctl_exporter
+  0.14.0. That includes the full attribute table with its `raw`/`value`/`worst`/`thresh`
+  views and both `attribute_flags_*` spellings, the `smartctl_device` info metric,
+  capacity/block-size/rotation-rate/interface-speed geometry, and the SMART overall
+  health status. NVMe devices are labelled by controller (`nvme0`), the way smartctl
+  addresses them, not by namespace (`nvme0n1`). Which families appear on which
+  transport follows the live scrape rather than data availability — `bytes_read` is
+  NVMe-only and `rotation_rate` SATA-only because that is what smartctl_exporter
+  emits, and serving a family the original omits would break the contract just as
+  surely as omitting one. A field the device never reported is skipped rather than
+  zeroed: a zero `available_spare` would read as a worn-out drive.
+
+  The three families not carried are facts about the smartctl_exporter *process*,
+  not about hardware: `smartctl_version` (the smartmontools binary version),
+  `smartctl_exporter_build_info`, and `smartctl_device_smartctl_exit_status` — the
+  latter is not merely 0/1 but carries codes like 64 ("device error log not empty"),
+  which a synthetic 0 would silently mask.
 
 Events are delivered as [CloudEvents 1.0](https://cloudevents.io/) envelopes signed with
 [Standard Webhooks](https://www.standardwebhooks.com/) HMAC-SHA256, so any conformant receiver

@@ -98,8 +98,8 @@ func TestSmartNVMeMapping(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
-	if len(got) != 7 {
-		t.Fatalf("want 7 samples (temp+poh+5 nvme), got %d: %+v", len(got), got)
+	if len(got) != 10 {
+		t.Fatalf("want 10 samples (temp+poh+8 nvme), got %d: %+v", len(got), got)
 	}
 
 	byMetric := map[string]float64{}
@@ -175,8 +175,8 @@ func TestSmartMixedSATANVMeMapping(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
-	if len(got) != 14 {
-		t.Fatalf("want 14 samples (7 sda + 7 nvme0n1), got %d: %+v", len(got), got)
+	if len(got) != 17 {
+		t.Fatalf("want 17 samples (7 sda + 10 nvme0n1), got %d: %+v", len(got), got)
 	}
 
 	byDevice := map[string]map[string]float64{}
@@ -210,6 +210,9 @@ func TestSmartMixedSATANVMeMapping(t *testing.T) {
 		"nvme_available_spare_threshold": 10,
 		"nvme_media_errors":              0,
 		"nvme_critical_warning":          0,
+		"nvme_bytes_read_total":          0,
+		"nvme_bytes_written_total":       0,
+		"nvme_error_log_entries":         0,
 	}
 
 	if len(byDevice["sda"]) != len(wantSDA) {
@@ -317,6 +320,29 @@ smartctl_device_power_on_seconds{device="nvme0"} 8.95356e+07
 	if err := testutil.CollectAndCompare(sc, strings.NewReader(exp),
 		"smartctl_device_percentage_used", "smartctl_device_power_on_seconds"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// ATA identity fields arrive as big-endian 16-bit words, so every byte pair is
+// transposed over the little-endian ioctl. Getting this wrong is silent: the
+// model still looks like a plausible string, just scrambled — a live scrape
+// showed "DW CW HU274141LA6E00" where the drive reports "WDC  WUH721414ALE600".
+func TestATAStringSwapsWordBytes(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{"model", "DW CW HU274141LA6E00", "WDC  WUH721414ALE600"},
+		{"serial", "J94G0ATX", "9JG4A0XT"},
+		{"firmware", "DLCA0TD7", "LDACT07D"},
+		{"trailing space padding", "DW C    ", "WDC"},
+		{"empty", "", ""},
+	}
+	for _, tt := range tests {
+		if got := ataString([]byte(tt.raw)); got != tt.want {
+			t.Errorf("%s: ataString(%q) = %q, want %q", tt.name, tt.raw, got, tt.want)
+		}
 	}
 }
 
