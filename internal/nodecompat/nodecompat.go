@@ -51,6 +51,7 @@ func New(procRoot, rootFS string, log *slog.Logger) *Exporter {
 			newLoadAvg(procRoot),
 			newFileFD(procRoot),
 			newEntropy(procRoot),
+			newProcs(procRoot),
 		},
 	}
 }
