@@ -37,12 +37,19 @@ func (l *loadAvg) Collect(ch chan<- prometheus.Metric) error {
 		// supposed to move together must never disagree on a dashboard.
 		return fmt.Errorf("loadavg: want at least %d fields, got %d", len(loadAvgDescs), len(fields))
 	}
-	for i, d := range loadAvgDescs {
+	// Parse all three values before emitting any, so a bad field doesn't
+	// leave the channel with a partial set.
+	var values [3]float64
+	for i := range values {
 		v, err := strconv.ParseFloat(fields[i], 64)
 		if err != nil {
 			return fmt.Errorf("loadavg field %d (%q): %w", i, fields[i], err)
 		}
-		ch <- prometheus.MustNewConstMetric(d, prometheus.GaugeValue, v)
+		values[i] = v
+	}
+	// All parsed successfully; now emit atomically.
+	for i, d := range loadAvgDescs {
+		ch <- prometheus.MustNewConstMetric(d, prometheus.GaugeValue, values[i])
 	}
 	return nil
 }

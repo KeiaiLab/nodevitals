@@ -67,3 +67,19 @@ func TestLoadAvgShortLineErrors(t *testing.T) {
 		t.Fatal("want error for a 2-field loadavg, got nil")
 	}
 }
+
+// A line with the right field count but a bad value must emit nothing at all:
+// a dashboard showing node_load1 without node_load5 is worse than showing
+// neither, and a metric already written to the channel cannot be retracted.
+func TestLoadAvgUnparseableFieldEmitsNothing(t *testing.T) {
+	procRoot := t.TempDir()
+	writeProcFile(t, procRoot, "loadavg", "13.62 notanumber 5.52 8/5206 1591949\n")
+
+	ch := make(chan prometheus.Metric, 8)
+	if err := newLoadAvg(procRoot).Collect(ch); err == nil {
+		t.Fatal("want error for an unparseable loadavg field, got nil")
+	}
+	if len(ch) != 0 {
+		t.Fatalf("emitted %d metrics before failing, want 0", len(ch))
+	}
+}
