@@ -49,6 +49,8 @@ func New(procRoot, rootFS string, log *slog.Logger) *Exporter {
 		log: log,
 		subs: []subCollector{
 			newLoadAvg(procRoot),
+			newFileFD(procRoot),
+			newEntropy(procRoot),
 		},
 	}
 }
