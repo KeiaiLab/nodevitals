@@ -38,9 +38,11 @@ func TestFileFDMalformedErrors(t *testing.T) {
 // A line with the right field count but a bad value must emit nothing at all:
 // a dashboard showing node_filefd_allocated without node_filefd_maximum is worse
 // than showing neither, and a metric already written to the channel cannot be retracted.
+// The first field (allocated) parses successfully, but the third (maximum) fails —
+// this is the shape that discriminates atomic from non-atomic implementations.
 func TestFileFDUnparseableFieldEmitsNothing(t *testing.T) {
 	procRoot := t.TempDir()
-	writeProcFile(t, procRoot, "sys/fs/file-nr", "notanumber\t0\t2097152\n")
+	writeProcFile(t, procRoot, "sys/fs/file-nr", "9679\t0\tnotanumber\n")
 
 	ch := make(chan prometheus.Metric, 8)
 	if err := newFileFD(procRoot).Collect(ch); err == nil {
