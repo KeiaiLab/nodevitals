@@ -49,14 +49,19 @@ node_vmstat_pswpout 0
 	}
 }
 
-// nr_free_pages and pgscan_kswapd are real fields that the default allowlist
-// deliberately excludes; emitting them would be a contract break in the
-// "serving more than the original" direction.
+// nr_free_pages and pgscan_kswapd are real fields the default allowlist
+// deliberately excludes. Asserting on the surviving series BY NAME (not merely
+// counting one survivor) is what makes this test fail if the regex ever starts
+// matching the wrong field.
 func TestVMStatExcludesNonAllowlisted(t *testing.T) {
 	procRoot := t.TempDir()
 	writeProcFile(t, procRoot, "vmstat", "nr_free_pages 1\npgscan_kswapd 2\npgfault 3\n")
 
-	if got := testutil.CollectAndCount(exporterWith(newVMStat(procRoot))); got != 1 {
-		t.Fatalf("served %d series, want 1 (pgfault only)", got)
+	golden := `# HELP node_vmstat_pgfault /proc/vmstat information field pgfault.
+# TYPE node_vmstat_pgfault untyped
+node_vmstat_pgfault 3
+`
+	if err := testutil.CollectAndCompare(exporterWith(newVMStat(procRoot)), strings.NewReader(golden)); err != nil {
+		t.Errorf("allowlist exposed the wrong field set:\n%v", err)
 	}
 }
