@@ -52,6 +52,7 @@ func New(procRoot, rootFS string, log *slog.Logger) *Exporter {
 			newFileFD(procRoot),
 			newEntropy(procRoot),
 			newProcs(procRoot),
+			newVMStat(procRoot),
 		},
 	}
 }
