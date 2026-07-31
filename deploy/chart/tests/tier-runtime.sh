@@ -126,6 +126,20 @@ printf '%s\n' "$NE" | grep -q 'rootfsPath: /host/root' \
 printf '%s\n' "$NE" | grep -q 'mountPath: /run/udev' \
   || fail "udev 마운트 누락 — node_disk_*_info 2종이 조용히 빠진다"
 
+# systemd collector 는 /run/systemd/private 소켓으로만 유닛 상태를 읽는다.
+# --collector.systemd 를 켜고 이 마운트를 빠뜨리면 collector 가 등록만 되고 매
+# 스크레이프 실패하며 node_systemd_* 9 family(라이브 실측 1,591 시리즈)가 통째로
+# 빠진다 — /metrics 는 200 을 계속 주므로 로그를 안 보면 드러나지 않는다.
+NE_SYSTEMD="$(render --set nodeExporter.enabled=true --set nodeExporter.mountSystemd=true)"
+printf '%s\n' "$NE_SYSTEMD" | grep -q 'mountPath: /run/systemd' \
+  || fail "mountSystemd=true 인데 /run/systemd 마운트가 렌더되지 않음"
+printf '%s\n' "$NE_SYSTEMD" | grep -q 'path: /run/systemd' \
+  || fail "mountSystemd=true 인데 /run/systemd hostPath 볼륨이 렌더되지 않음"
+# 기본값(false)에서는 나오지 않아야 한다 — systemd 없는 노드에 빈 디렉터리를
+# 붙이면 그것대로 매 스크레이프 실패가 된다.
+printf '%s\n' "$NE" | grep -q '/run/systemd' \
+  && fail "mountSystemd 기본값이 false 인데 /run/systemd 가 렌더됨"
+
 # 호스트 루트 마운트는 컨테이너에 호스트 파일시스템 전체 읽기를 준다. 끄면
 # 마운트와 rootfsPath 가 함께 사라져야 하고(권한 축소), 그 경우 에이전트가
 # filesystem collector 를 끄므로 "다른 기계를 잰 값"이 나오지 않는다.

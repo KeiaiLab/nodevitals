@@ -107,6 +107,11 @@ ansible role writing SMART) drops .prom files into.
   mountPath: /run/udev
   readOnly: true
 {{- end }}
+{{- if .Values.nodeExporter.mountSystemd }}
+- name: systemd
+  mountPath: /run/systemd
+  readOnly: true
+{{- end }}
 {{- end }}
 {{- end -}}
 
@@ -128,6 +133,15 @@ ansible role writing SMART) drops .prom files into.
   hostPath:
     path: /run/udev
     type: DirectoryOrCreate
+{{- end }}
+{{- if .Values.nodeExporter.mountSystemd }}
+- name: systemd
+  hostPath:
+    path: /run/systemd
+    # Directory, not DirectoryOrCreate: an empty directory conjured on a node
+    # without systemd would let the collector register and then fail every
+    # scrape, which is exactly the silent gap this mount exists to close.
+    type: Directory
 {{- end }}
 {{- end }}
 {{- end -}}

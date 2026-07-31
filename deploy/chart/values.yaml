@@ -52,6 +52,16 @@ nodeExporter:
   # 없으면 "Failed to open directory, disabling udev device properties" 를 한 줄
   # 남기고 두 family 만 조용히 빠지므로, 기본으로 마운트한다.
   mountUdev: true
+  # systemd collector 는 /run/systemd/private 소켓으로 dbus 에 붙어 유닛 상태를
+  # 읽는다. 컨테이너에는 그 소켓이 없으므로, extraFlags 에 --collector.systemd 를
+  # 넣었다면 이것도 반드시 함께 켜야 한다. 안 켜면 collector 가 등록은 되고 매
+  # 스크레이프마다
+  #   ERROR collector failed name=systemd err="couldn't get dbus connection:
+  #   dial unix /run/systemd/private: connect: no such file or directory"
+  # 를 남기며 node_systemd_* 9 family 가 통째로 빠진다(라이브 실측 1,591 시리즈).
+  # /metrics 는 200 을 계속 주고 다른 표면은 멀쩡해서, 로그를 보지 않으면
+  # "켰으니 나오겠지" 로 넘어가는 조용한 손실이다.
+  mountSystemd: false
   # collector 켜고 끄기 전용. --collector.* / --no-collector.* 만 허용되며 그 외는
   # 기동 실패한다 — 이 목록은 ConfigMap 에서 오고, --path.* 를 뒤에서 덮으면 모든
   # 수치가 호스트가 아니라 이 파드를 측정한 값으로 조용히 바뀐다.
