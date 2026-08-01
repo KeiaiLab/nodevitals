@@ -149,6 +149,31 @@ printf '%s\n' "$NE_NOROOT" | grep -q '/host/root' \
 printf '%s\n' "$NE_NOROOT" | grep -q 'rootfsPath' \
   && fail "mountRootFS=false 인데 rootfsPath 가 config 에 남아 filesystem collector 가 컨테이너를 잰다"
 
+# extraFlags 오버라이드가 nativeCollectors ↔ --no-collector.* 커플링을 끊으면 안 된다.
+# Helm 은 리스트를 병합하지 않고 통째로 치환하므로, 배포 레포가 자기 extraFlags 를
+# values 에 갖고 있어도(예: --collector.processes 를 직접 켜는 값) nativeCollectors 가
+# true 면 7종이 렌더 시점에 항상 합류해야 한다 — 이게 깨지면 임베드·네이티브 컬렉터가
+# 같은 이름을 동시에 내 registry 가 /metrics 스크레이프 전체를 거부한다. values 기본값에
+# 이 7종을 두는 방식(컨벤션)은 오버라이드에 깨질 수 있어 렌더 시점 결합만이 유효하다.
+NE_OVERRIDE="$(render --set nodeExporter.enabled=true --set nodeExporter.nativeCollectors=true \
+  --set 'nodeExporter.extraFlags[0]=--collector.processes' --set 'nodeExporter.extraFlags[1]=--collector.systemd')"
+printf '%s\n' "$NE_OVERRIDE" | grep -q -- '- --collector.processes$' \
+  || fail "nativeCollectors=true 인데 extraFlags 오버라이드 항목(--collector.processes)이 사라졌다"
+printf '%s\n' "$NE_OVERRIDE" | grep -q -- '- --collector.systemd$' \
+  || fail "nativeCollectors=true 인데 extraFlags 오버라이드 항목(--collector.systemd)이 사라졌다"
+noc=$(printf '%s\n' "$NE_OVERRIDE" | grep -c -- '- --no-collector\.' || true)
+[ "$noc" -eq 7 ] || fail "extraFlags 오버라이드가 --no-collector.* 7종 커플링을 끊었다 (got $noc, want 7)"
+
+# nativeCollectors 가 꺼져 있으면(옵트인 안 한 업그레이드 기본값) 오버라이드는 그대로
+# 통과하고 --no-collector.* 는 하나도 섞이지 않아야 한다 — 섞이면 opt-in 하지 않은
+# 배포가 helm upgrade 만으로 7개 metric family 를 조용히 잃는다.
+NE_OVERRIDE_OFF="$(render --set nodeExporter.enabled=true \
+  --set 'nodeExporter.extraFlags[0]=--collector.processes' --set 'nodeExporter.extraFlags[1]=--collector.systemd')"
+printf '%s\n' "$NE_OVERRIDE_OFF" | grep -q -- '- --collector.processes$' \
+  || fail "nativeCollectors=false 인데 extraFlags 오버라이드 항목이 사라졌다"
+printf '%s\n' "$NE_OVERRIDE_OFF" | grep -q -- '\-\-no-collector\.' \
+  && fail "nativeCollectors=false(기본값)인데 --no-collector.* 가 섞여 렌더됐다 — opt-in 안 한 업그레이드가 metric 을 잃는다"
+
 # appVersion 은 실제로 발행된 이미지 태그여야 한다. 차트만 고치면서 appVersion
 # 까지 올리면 존재하지 않는 태그를 가리켜 ImagePullBackOff 가 난다(라이브 사고
 # 2026-07-22: 차트 0.4.1 이 미발행 이미지 0.4.1 을 참조). 발행 여부는 네트워크
