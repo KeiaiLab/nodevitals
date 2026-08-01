@@ -24,9 +24,15 @@ func writeProcFile(t *testing.T, procRoot, name, body string) {
 }
 
 // exporterWith builds an Exporter carrying exactly one sub-collector, so a
-// golden comparison covers that group and nothing else.
+// golden comparison covers that group and nothing else. emitScrapeHealth
+// defaults on here — these per-group tests restrict their golden comparison
+// to their own metric names (see TestLoadAvg), so the health-signal pair
+// emitted alongside is out of scope for them either way. Tests that need it
+// off (because they simulate the embedded node_exporter also being
+// registered) construct an *Exporter literal directly instead of calling
+// this helper — see nodecompat_test.go.
 func exporterWith(subs ...subCollector) *Exporter {
-	return &Exporter{log: slog.Default(), subs: subs}
+	return &Exporter{log: slog.Default(), emitScrapeHealth: true, subs: subs}
 }
 
 func TestLoadAvg(t *testing.T) {

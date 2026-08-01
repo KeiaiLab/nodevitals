@@ -157,12 +157,22 @@ func main() {
 				"groups", strings.Join(conflicts, ","))
 			os.Exit(1)
 		}
-		nc := nodecompat.New(cfg.ProcRoot, cfg.NodeExporter.RootFSPath, slog.Default())
+		// node_scrape_collector_success/_duration_seconds must not be declared
+		// twice: prometheus.Registry rejects a second descriptor with the same
+		// fqName+constLabels regardless of what values its "collector" variable
+		// label takes, and the embedded node_exporter collector set — when
+		// registered at all — already owns those two names for its own
+		// collectors. So nodecompat only emits its copy when the embedded set is
+		// not registered in this process; see nodecompat.scrapeSuccessDesc for
+		// the full rule and the gap this currently leaves for the six native
+		// groups while both are enabled together.
+		emitScrapeHealth := !cfg.NodeExporter.Enabled
+		nc := nodecompat.New(cfg.ProcRoot, cfg.NodeExporter.RootFSPath, emitScrapeHealth, slog.Default())
 		if err := metrics.Register(nc); err != nil {
 			slog.Error("register native node collectors", "err", err)
 			os.Exit(1)
 		}
-		slog.Info("native node_* collectors enabled")
+		slog.Info("native node_* collectors enabled", "scrapeHealth", emitScrapeHealth)
 	}
 
 	// Long-term downsampled history — local to this node, survives past the
