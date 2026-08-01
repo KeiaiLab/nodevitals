@@ -2,7 +2,7 @@ apiVersion: v2
 name: nodevitals
 description: Unified hardware telemetry agent for Kubernetes nodes
 type: application
-version: 0.8.5
+version: 0.8.6
 appVersion: "0.8.5"
 kubeVersion: ">=1.26.0-0"
 
@@ -47,4 +47,4 @@ annotations:
       url: https://raw.githubusercontent.com/KeiaiLab/nodevitals/main/docs/branding/symbol.png
   artifacthub.io/images: |
     - name: nodevitals
-      image: ghcr.io/keiailab/nodevitals:0.1.0
+      image: ghcr.io/keiailab/nodevitals:0.8.5
