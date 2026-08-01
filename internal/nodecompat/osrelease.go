@@ -2,10 +2,13 @@ package nodecompat
 
 import (
 	"bufio"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -28,6 +31,10 @@ var (
 		"node_os_version",
 		"Metric containing the major.minor part of the OS version.",
 		[]string{"id", "id_like", "name"}, nil)
+	osSupportEndDesc = prometheus.NewDesc(
+		"node_os_support_end_timestamp_seconds",
+		"Metric containing the end-of-life date timestamp of the OS.",
+		nil, nil)
 )
 
 type osRelease struct{ rootFS string }
@@ -38,8 +45,30 @@ func (o *osRelease) Name() string { return "os" }
 
 func (o *osRelease) Collect(ch chan<- prometheus.Metric) error {
 	kv, err := parseOSRelease(filepath.Join(o.rootFS, "etc", "os-release"))
+	if errors.Is(err, os.ErrNotExist) {
+		// Upstream falls back to /usr/lib/os-release when /etc/os-release is
+		// missing — immutable-root and initramfs-built distributions commonly
+		// ship only the /usr/lib copy and reserve /etc for a local override.
+		kv, err = parseOSRelease(filepath.Join(o.rootFS, "usr", "lib", "os-release"))
+	}
 	if err != nil {
 		return err
+	}
+
+	// Parsed before anything is sent to ch: a SUPPORT_END that fails to parse
+	// must cost the whole group, the same all-or-nothing rule upstream's
+	// UpdateStruct enforces (collector/os_release.go) — node_os_info without a
+	// stale/wrong node_os_support_end_timestamp_seconds is a worse outcome
+	// than neither.
+	var supportEndUnix float64
+	haveSupportEnd := false
+	if raw := kv["SUPPORT_END"]; raw != "" {
+		t, perr := time.Parse(time.DateOnly, raw)
+		if perr != nil {
+			return fmt.Errorf("os-release SUPPORT_END=%q: %w", raw, perr)
+		}
+		supportEndUnix = float64(t.Unix())
+		haveSupportEnd = true
 	}
 
 	values := make([]string, len(osInfoLabels))
@@ -53,6 +82,13 @@ func (o *osRelease) Collect(ch chan<- prometheus.Metric) error {
 	if v, ok := majorMinor(kv["VERSION_ID"]); ok {
 		ch <- prometheus.MustNewConstMetric(osVersionDesc, prometheus.GaugeValue, v,
 			kv["ID"], kv["ID_LIKE"], kv["NAME"])
+	}
+
+	// Most distributions never set SUPPORT_END — e21's does not, which is why
+	// this family had no golden coverage until now. The metric is omitted
+	// entirely rather than emitted as 0, matching upstream.
+	if haveSupportEnd {
+		ch <- prometheus.MustNewConstMetric(osSupportEndDesc, prometheus.GaugeValue, supportEndUnix)
 	}
 	return nil
 }

@@ -212,11 +212,18 @@ matching `listenAddr` into the pod's ConfigMap for you.)
 
 ### Drop-in exporter compatibility
 
-Two opt-in blocks make `/metrics` a drop-in replacement for the exporters nodevitals retires,
+Opt-in blocks make `/metrics` a drop-in replacement for the exporters nodevitals retires,
 so existing dashboards and alert rules keep working unchanged:
 
 - `nodeExporter.enabled` embeds upstream node_exporter's collectors — the full `node_*`
   surface, identical names/labels/semantics (see [Third-party notices](#third-party-notices)).
+- `nodeExporter.nativeCollectors` serves six of those `node_*` groups — `loadavg`, `filefd`,
+  `entropy`, `vmstat`, `uname`, `os` — from nodevitals' own `/proc` readers
+  (`internal/nodecompat`) instead of the embedded collectors, with identical names, HELP
+  text, and types. The chart injects the matching six `--no-collector.*` flags
+  automatically, so the pairing can't drift apart under a values override — two collectors
+  emitting the same metric name make the registry reject the whole scrape, not just the
+  duplicate.
 - `dcgmCompat.enabled` re-emits the gpu tier's NVML snapshot as the 18-metric
   `DCGM_FI_*` surface of dcgm-exporter — names, HELP text, value types, units
   (framebuffer MiB, energy mJ) and identity labels
