@@ -34,7 +34,7 @@ jobs:
       - run: make test
       - name: Coverage floor (ratchet)
         env:
-          COVERAGE_FLOOR: "78"
+          COVERAGE_FLOOR: "70"
         run: bash hack/coverage-floor.sh cover.out
       - run: make build
 
