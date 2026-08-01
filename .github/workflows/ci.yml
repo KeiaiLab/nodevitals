@@ -1,0 +1,51 @@
+name: ci
+
+# PR 게이트. 이 repo 는 release.yml 하나만 있어 **테스트가 CI 에서 한 번도 실행된
+# 적이 없었다** — 131 개 테스트·80% 커버리지가 있는데도 회귀가 그대로 머지되어
+# 그대로 발행되는 구조였다. 새 도구를 들이지 않고 Makefile 의 기존 타깃만 연결한다.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: fmt + vet + test + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make fmt
+      - run: make vet
+      # build 는 CGO_ENABLED=1 (go-nvml + node_exporter collector) — 헤더가 필요하다.
+      - name: apt deps for cgo build
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential
+      - run: make test
+      - run: make build
+
+  chart:
+    name: chart lint + secret isolation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: azure/setup-helm@v4
+      - name: Install kubeconform
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/kubeconform.tar.gz \
+            https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+          tar -xzf /tmp/kubeconform.tar.gz -C /tmp kubeconform
+          sudo install /tmp/kubeconform /usr/local/bin/kubeconform
+      - run: make chart-lint
+      - run: make chart-test
