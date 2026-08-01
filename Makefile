@@ -10,7 +10,7 @@ IMGREF ?= $(IMG):dev
 VERSION := $(shell awk '/^appVersion:/{gsub(/"/,"",$$2);print $$2}' deploy/chart/Chart.yaml | grep -E '^[0-9]+\.[0-9]+\.[0-9]+([-.+][0-9A-Za-z.-]+)?$$')
 
 test:
-	go test ./...
+	go test ./... -coverprofile cover.out
 
 vet:
 	go vet ./...

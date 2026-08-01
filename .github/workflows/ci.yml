@@ -32,6 +32,10 @@ jobs:
       - name: apt deps for cgo build
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential
       - run: make test
+      - name: Coverage floor (ratchet)
+        env:
+          COVERAGE_FLOOR: "78"
+        run: bash hack/coverage-floor.sh cover.out
       - run: make build
 
   chart:
