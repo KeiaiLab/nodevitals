@@ -9,3 +9,4 @@ coverage.*
 /vendor/
 # Editors
 .DS_Store
+cover.out
