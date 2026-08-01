@@ -17,6 +17,31 @@ The blended label is **alpha** — it correctly communicates *"not production-re
 
 ---
 
+## Status update — 2026-08-01 (`main @ 0.8.5`, chart 0.8.6)
+
+> The audit above is preserved verbatim as the 2026-07-18 assessment. This section records what has
+> since been **resolved with evidence**, so the report stops reporting closed defects as open. Only
+> items re-verified by an executed command are marked resolved.
+
+| 2026-07-18 finding | Status | Evidence |
+|---|---|---|
+| **Critical (1)** webhook HMAC secret rendered plaintext into a ConfigMap | **resolved** | `helm template` shows no plaintext HMAC, and a permanent regression guard now runs in CI — `deploy/chart/tests/secret-isolation.sh` → `PASS: webhook secret isolated to kind:Secret (0 ConfigMap leak, index-aligned across 2 webhooks x 3 tiers)` |
+| **Critical (2)** default install rejected by PSA Baseline | **addressed as documented behaviour** | hostPath `/proc`+`/sys` is inherent to a node metrics agent and cannot be removed; the recommended remediation (document the required namespace label) is implemented — `NOTES.txt` prints an explicit PSA warning with the exact `pod-security.kubernetes.io/enforce=privileged` command and notes the gpu tier is PSA-Restricted-compliant |
+| **High (8)** no CI at all | **resolved** | `.github/workflows/ci.yml` added (#30): `make fmt`/`vet`/`test`/`build` + `chart-lint` (kubeconform strict) + `chart-test`. First run green. Measured on `main`: **12/12 packages pass, mean coverage 80.5% across 13 packages** |
+| README falsely claiming "runs in CI" | **resolved** | no CI badge or claim remains in `README.md`, and CI now genuinely exists |
+| hardened default pod spec | **verified** | rendered manifests carry `runAsNonRoot`, `readOnlyRootFilesystem`, `allowPrivilegeEscalation: false`, `seccompProfile: RuntimeDefault` |
+| **smart + gpu tiers never executed on hardware** | **still open** | unchanged — no bare-metal SMART/NVML execution evidence exists; `hwmon` sensor parsing likewise remains fixture-only |
+
+**Revised readiness: BETA for the core tier and the default deployment surface; smart + gpu tiers remain pre-alpha.**
+
+The blended label moves **alpha → beta**: both Critical deployment blockers are closed (one with a
+permanent regression guard), and the process gap that let regressions ship unverified is closed. It is
+deliberately **not** rounded to production-grade, because the load-bearing limitation of the original
+audit is untouched — the smart and gpu tiers have still never run on real hardware. Promoting those
+requires execution on a bare-metal node with SMART-capable disks and an NVIDIA GPU, not more code review.
+
+---
+
 ## Executive summary
 
 **What is genuinely proven (real executed evidence):**
