@@ -44,7 +44,11 @@ node_load15 5.52
 # TYPE node_load5 gauge
 node_load5 7.62
 `
-	if err := testutil.CollectAndCompare(exporterWith(newLoadAvg(procRoot)), strings.NewReader(golden)); err != nil {
+	// Restricted to this group's own names: Exporter.Collect also emits the
+	// node_scrape_collector_success/duration health-signal pair now, and
+	// duration's value is real elapsed time, not byte-comparable to a golden.
+	if err := testutil.CollectAndCompare(exporterWith(newLoadAvg(procRoot)), strings.NewReader(golden),
+		"node_load1", "node_load5", "node_load15"); err != nil {
 		t.Errorf("loadavg exposition drifted from node_exporter contract:\n%v", err)
 	}
 }

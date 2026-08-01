@@ -26,7 +26,9 @@ func TestUnameInfo(t *testing.T) {
 # TYPE node_uname_info gauge
 node_uname_info{domainname="(none)",machine="x86_64",nodename="e21",release="6.17.0-22-generic",sysname="Linux",version="#22~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Thu Mar 26 15:25:54 UTC 2"} 1
 `
-	if err := testutil.CollectAndCompare(exporterWith(newUname(fake)), strings.NewReader(golden)); err != nil {
+	// Restricted to this group's own name — see loadavg_test.go for why.
+	if err := testutil.CollectAndCompare(exporterWith(newUname(fake)), strings.NewReader(golden),
+		"node_uname_info"); err != nil {
 		t.Errorf("uname exposition drifted:\n%v", err)
 	}
 }

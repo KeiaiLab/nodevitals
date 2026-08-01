@@ -40,7 +40,9 @@ node_os_info{build_id="",id="ubuntu",id_like="debian",image_id="",image_version=
 # TYPE node_os_version gauge
 node_os_version{id="ubuntu",id_like="debian",name="Ubuntu"} 24.04
 `
-	if err := testutil.CollectAndCompare(exporterWith(newOSRelease(rootFS)), strings.NewReader(golden)); err != nil {
+	// Restricted to this group's own names — see loadavg_test.go for why.
+	if err := testutil.CollectAndCompare(exporterWith(newOSRelease(rootFS)), strings.NewReader(golden),
+		"node_os_info", "node_os_version"); err != nil {
 		t.Errorf("os-release exposition drifted:\n%v", err)
 	}
 }

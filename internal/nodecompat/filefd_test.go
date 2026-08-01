@@ -21,7 +21,9 @@ node_filefd_allocated 9679
 # TYPE node_filefd_maximum gauge
 node_filefd_maximum 2.097152e+06
 `
-	if err := testutil.CollectAndCompare(exporterWith(newFileFD(procRoot)), strings.NewReader(golden)); err != nil {
+	// Restricted to this group's own names — see loadavg_test.go for why.
+	if err := testutil.CollectAndCompare(exporterWith(newFileFD(procRoot)), strings.NewReader(golden),
+		"node_filefd_allocated", "node_filefd_maximum"); err != nil {
 		t.Errorf("filefd exposition drifted:\n%v", err)
 	}
 }

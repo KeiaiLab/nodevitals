@@ -44,7 +44,10 @@ node_vmstat_pswpin 0
 # TYPE node_vmstat_pswpout untyped
 node_vmstat_pswpout 0
 `
-	if err := testutil.CollectAndCompare(exporterWith(newVMStat(procRoot)), strings.NewReader(golden)); err != nil {
+	// Restricted to this group's own names — see loadavg_test.go for why.
+	if err := testutil.CollectAndCompare(exporterWith(newVMStat(procRoot)), strings.NewReader(golden),
+		"node_vmstat_oom_kill", "node_vmstat_pgfault", "node_vmstat_pgmajfault", "node_vmstat_pgpgin",
+		"node_vmstat_pgpgout", "node_vmstat_pswpin", "node_vmstat_pswpout"); err != nil {
 		t.Errorf("vmstat exposition drifted:\n%v", err)
 	}
 }
@@ -61,7 +64,14 @@ func TestVMStatExcludesNonAllowlisted(t *testing.T) {
 # TYPE node_vmstat_pgfault untyped
 node_vmstat_pgfault 3
 `
-	if err := testutil.CollectAndCompare(exporterWith(newVMStat(procRoot)), strings.NewReader(golden)); err != nil {
+	// Naming the excluded fields here (not just the survivor) keeps this test's
+	// power intact: GatherAndCompare's metricNames filters BOTH the gathered and
+	// expected sets, so if the regex regressed and started emitting
+	// node_vmstat_nr_free_pages/pgscan_kswapd, they would still surface in the
+	// comparison and fail it — while the new node_scrape_collector_* health
+	// signal, left unnamed, is filtered out of the comparison entirely.
+	if err := testutil.CollectAndCompare(exporterWith(newVMStat(procRoot)), strings.NewReader(golden),
+		"node_vmstat_pgfault", "node_vmstat_nr_free_pages", "node_vmstat_pgscan_kswapd"); err != nil {
 		t.Errorf("allowlist exposed the wrong field set:\n%v", err)
 	}
 }

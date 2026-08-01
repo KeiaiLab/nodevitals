@@ -21,7 +21,9 @@ node_entropy_available_bits 256
 # TYPE node_entropy_pool_size_bits gauge
 node_entropy_pool_size_bits 256
 `
-	if err := testutil.CollectAndCompare(exporterWith(newEntropy(procRoot)), strings.NewReader(golden)); err != nil {
+	// Restricted to this group's own names — see loadavg_test.go for why.
+	if err := testutil.CollectAndCompare(exporterWith(newEntropy(procRoot)), strings.NewReader(golden),
+		"node_entropy_available_bits", "node_entropy_pool_size_bits"); err != nil {
 		t.Errorf("entropy exposition drifted:\n%v", err)
 	}
 }

@@ -17,6 +17,7 @@ package nodecompat
 import (
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -29,6 +30,25 @@ type subCollector interface {
 	Name() string
 	Collect(ch chan<- prometheus.Metric) error
 }
+
+// scrapeDurationDesc and scrapeSuccessDesc mirror node_exporter's own
+// per-collector health series byte-for-byte (name, HELP, type — see
+// scrapeDurationDesc/scrapeSuccessDesc in the vendored collector/collector.go).
+// --no-collector.<name> deletes node_exporter's copy of these for every group
+// this package serves, so without a replacement a failing sub-collector would
+// have no Prometheus-visible failure signal at all: internal/sink/metrics.go's
+// Handler doc comment names node_scrape_collector_success dropping to 0 as the
+// reason a scrape-time error is not silent, and that must stay true here too.
+var (
+	scrapeDurationDesc = prometheus.NewDesc(
+		"node_scrape_collector_duration_seconds",
+		"node_exporter: Duration of a collector scrape.",
+		[]string{"collector"}, nil)
+	scrapeSuccessDesc = prometheus.NewDesc(
+		"node_scrape_collector_success",
+		"node_exporter: Whether a collector succeeded.",
+		[]string{"collector"}, nil)
+)
 
 // Exporter implements prometheus.Collector over the registered sub-collectors.
 type Exporter struct {
@@ -71,13 +91,26 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 
 // Collect runs every sub-collector. One failure is logged once and skipped so
 // a single unreadable file cannot cost the operator every other family —
-// the same per-collector isolation internal/collector.Registry.CollectAll uses.
+// the same per-collector isolation internal/collector.Registry.CollectAll
+// uses. Each sub-collector also gets a node_scrape_collector_success/duration
+// pair, the same per-collector health signal node_exporter's own execute()
+// emits (collector/collector.go), so a group failing after startup is still
+// visible to Prometheus even though --no-collector.<name> removed upstream's
+// copy of it.
 func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	for _, s := range e.subs {
-		if err := s.Collect(ch); err != nil {
+		begin := time.Now()
+		err := s.Collect(ch)
+		duration := time.Since(begin)
+
+		success := 1.0
+		if err != nil {
+			success = 0
 			if _, seen := e.warned.LoadOrStore(s.Name(), true); !seen {
 				e.log.Warn("nodecompat collector failed", "collector", s.Name(), "err", err)
 			}
 		}
+		ch <- prometheus.MustNewConstMetric(scrapeDurationDesc, prometheus.GaugeValue, duration.Seconds(), s.Name())
+		ch <- prometheus.MustNewConstMetric(scrapeSuccessDesc, prometheus.GaugeValue, success, s.Name())
 	}
 }
