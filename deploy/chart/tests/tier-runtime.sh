@@ -152,26 +152,31 @@ printf '%s\n' "$NE_NOROOT" | grep -q 'rootfsPath' \
 # extraFlags 오버라이드가 nativeCollectors ↔ --no-collector.* 커플링을 끊으면 안 된다.
 # Helm 은 리스트를 병합하지 않고 통째로 치환하므로, 배포 레포가 자기 extraFlags 를
 # values 에 갖고 있어도(예: --collector.processes 를 직접 켜는 값) nativeCollectors 가
-# true 면 7종이 렌더 시점에 항상 합류해야 한다 — 이게 깨지면 임베드·네이티브 컬렉터가
+# true 면 6종이 렌더 시점에 항상 합류해야 한다 — 이게 깨지면 임베드·네이티브 컬렉터가
 # 같은 이름을 동시에 내 registry 가 /metrics 스크레이프 전체를 거부한다. values 기본값에
-# 이 7종을 두는 방식(컨벤션)은 오버라이드에 깨질 수 있어 렌더 시점 결합만이 유효하다.
+# 이 6종을 두는 방식(컨벤션)은 오버라이드에 깨질 수 있어 렌더 시점 결합만이 유효하다.
+#
+# printf '%s\n' "$VAR" | grep -q 는 쓰지 않는다 — grep -q 가 첫 매치에서 먼저 끝나면
+# printf 가 SIGPIPE 로 죽어 pipefail 하에서 PIPESTATUS=141 0 이 거짓 실패를 만든다
+# (M2, 2026-07-31 실측 macOS ~83% 재현). herestring(<<<)은 파이프가 아니라 grep 이
+# 죽일 상대가 없으므로 이 문제가 원천적으로 없다.
 NE_OVERRIDE="$(render --set nodeExporter.enabled=true --set nodeExporter.nativeCollectors=true \
   --set 'nodeExporter.extraFlags[0]=--collector.processes' --set 'nodeExporter.extraFlags[1]=--collector.systemd')"
-printf '%s\n' "$NE_OVERRIDE" | grep -q -- '- --collector.processes$' \
+grep -q -- '- --collector.processes$' <<<"$NE_OVERRIDE" \
   || fail "nativeCollectors=true 인데 extraFlags 오버라이드 항목(--collector.processes)이 사라졌다"
-printf '%s\n' "$NE_OVERRIDE" | grep -q -- '- --collector.systemd$' \
+grep -q -- '- --collector.systemd$' <<<"$NE_OVERRIDE" \
   || fail "nativeCollectors=true 인데 extraFlags 오버라이드 항목(--collector.systemd)이 사라졌다"
-noc=$(printf '%s\n' "$NE_OVERRIDE" | grep -c -- '- --no-collector\.' || true)
-[ "$noc" -eq 7 ] || fail "extraFlags 오버라이드가 --no-collector.* 7종 커플링을 끊었다 (got $noc, want 7)"
+noc=$(grep -c -- '- --no-collector\.' <<<"$NE_OVERRIDE" || true)
+[ "$noc" -eq 6 ] || fail "extraFlags 오버라이드가 --no-collector.* 6종 커플링을 끊었다 (got $noc, want 6)"
 
 # nativeCollectors 가 꺼져 있으면(옵트인 안 한 업그레이드 기본값) 오버라이드는 그대로
 # 통과하고 --no-collector.* 는 하나도 섞이지 않아야 한다 — 섞이면 opt-in 하지 않은
-# 배포가 helm upgrade 만으로 7개 metric family 를 조용히 잃는다.
+# 배포가 helm upgrade 만으로 6개 metric family 를 조용히 잃는다.
 NE_OVERRIDE_OFF="$(render --set nodeExporter.enabled=true \
   --set 'nodeExporter.extraFlags[0]=--collector.processes' --set 'nodeExporter.extraFlags[1]=--collector.systemd')"
-printf '%s\n' "$NE_OVERRIDE_OFF" | grep -q -- '- --collector.processes$' \
+grep -q -- '- --collector.processes$' <<<"$NE_OVERRIDE_OFF" \
   || fail "nativeCollectors=false 인데 extraFlags 오버라이드 항목이 사라졌다"
-printf '%s\n' "$NE_OVERRIDE_OFF" | grep -q -- '\-\-no-collector\.' \
+grep -q -- '\-\-no-collector\.' <<<"$NE_OVERRIDE_OFF" \
   && fail "nativeCollectors=false(기본값)인데 --no-collector.* 가 섞여 렌더됐다 — opt-in 안 한 업그레이드가 metric 을 잃는다"
 
 # appVersion 은 실제로 발행된 이미지 태그여야 한다. 차트만 고치면서 appVersion
@@ -180,7 +185,9 @@ printf '%s\n' "$NE_OVERRIDE_OFF" | grep -q -- '\-\-no-collector\.' \
 # 없이 알 수 없으므로, 최소한 "appVersion 을 바꿀 때 의도했는지" 를 눈에 띄게
 # 만든다 — 이미지 태그가 appVersion 을 그대로 따르는지 고정한다.
 APPV="$(awk '/^appVersion:/{gsub(/"/,"",$2); print $2}' "$CHART/Chart.yaml")"
-printf '%s\n' "$(render)" | grep -q "image: \"ghcr.io/keiailab/nodevitals:${APPV}\"" \
+# herestring, not a pipe — see the M2 note above the NE_OVERRIDE block: this
+# exact line was the one that actually flaked (~83% of runs on macOS).
+grep -q "image: \"ghcr.io/keiailab/nodevitals:${APPV}\"" <<<"$(render)" \
   || fail "렌더된 이미지 태그가 appVersion($APPV) 과 다르다 — 발행되지 않은 태그를 가리킬 위험"
 
 OFF_NE="$(render --set singlePod=true)"

@@ -1505,6 +1505,18 @@ size and independence suggest, each becoming its own plan:
 | 5 | systemd | 1,591 | dbus client over `/run/systemd/private` — the only group needing a protocol implementation |
 | 6 | cpu, schedstat, ipvs, bonding, pressure, timex, time, textfile | ~800 | cpu is 576 series of per-core jiffies; textfile is a file-format reader |
 
+**Note (post-review, 2026-07-31):** `node_procs_running`/`node_procs_blocked` are not in
+Phase 1 and not yet in any row above. They belong to node_exporter's `stat` collector
+(`collector/stat_linux.go`, default-enabled), not a `processes` collector — `processes` is
+default-disabled and owns entirely different names (`node_processes_threads`/`_state`/
+`_pids`/`_max_processes`). Phase 1 originally shipped a `procs` group disabled via
+`--no-collector.processes`, which left `stat` running and emitting the same two names — a
+live registry conflict, so that group was dropped rather than shipped broken. The two
+metrics are deferred to whichever future phase takes on `stat`'s other five families
+(`node_intr_total`, `node_context_switches_total`, `node_forks_total`,
+`node_boot_time_seconds`, `node_softirqs_total`); `stat` needs its own row when that phase
+is scoped.
+
 When the last phase lands, remove `internal/nodeexporter`, drop
 `github.com/prometheus/node_exporter` from `go.mod`, and delete the
 `--no-collector.*` list along with the `nativeCollectors` toggle.

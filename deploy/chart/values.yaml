@@ -63,11 +63,13 @@ nodeExporter:
   # "켰으니 나오겠지" 로 넘어가는 조용한 손실이다.
   mountSystemd: false
   # nodevitals 자체 구현 node_* 그룹(internal/nodecompat)을 임베드 대신 쓴다.
-  # loadavg/filefd/entropy/processes/vmstat/uname/os 를 끄는 --no-collector.* 7종은
+  # loadavg/filefd/entropy/vmstat/uname/os 를 끄는 --no-collector.* 6종은
   # 여기 적지 않아도 된다 — ConfigMap 템플릿이 켰을 때 자동으로 붙여준다. 값 오버라이드가
   # extraFlags 를 통째로 교체해도(Helm 은 리스트를 병합하지 않는다) 짝이 끊어지지 않도록,
-  # 커플링을 values 기본값이 아니라 렌더 시점에 둔 것 — 직접 --no-collector.* 7종을 여기
-  # 적지 마시오(중복이어도 무해하지만 의미 없음).
+  # 커플링을 values 기본값이 아니라 렌더 시점에 둔 것 — 직접 --no-collector.* 6종을 여기
+  # 적지 마시오(중복이어도 무해하지만 의미 없음). processes 는 네이티브 그룹이 아니다 —
+  # node_procs_running/blocked 는 node_exporter 의 stat 컬렉터(기본 활성) 소유라
+  # --no-collector.processes 로는 끌 수 없다(internal/nodecompat/upstream.go 주석 참고).
   nativeCollectors: false
   # collector 켜고 끄기 전용. --collector.* / --no-collector.* 만 허용되며 그 외는
   # 기동 실패한다 — 이 목록은 ConfigMap 에서 오고, --path.* 를 뒤에서 덮으면 모든

@@ -45,13 +45,19 @@ type Exporter struct {
 // mount and rootFS the host root mount; both are injected so tests can point
 // at a fixture directory.
 func New(procRoot, rootFS string, log *slog.Logger) *Exporter {
+	if rootFS == "" {
+		// Upstream defaults --path.rootfs to "/". Without this, a deployment
+		// running with mountRootFS=false (RootFSPath left empty) makes
+		// osrelease.go build the relative path "etc/os-release", resolved
+		// against this process's working directory instead of the host root.
+		rootFS = "/"
+	}
 	return &Exporter{
 		log: log,
 		subs: []subCollector{
 			newLoadAvg(procRoot),
 			newFileFD(procRoot),
 			newEntropy(procRoot),
-			newProcs(procRoot),
 			newVMStat(procRoot),
 			newUname(realUname),
 			newOSRelease(rootFS),
