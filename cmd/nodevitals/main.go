@@ -115,6 +115,7 @@ func main() {
 	// one DaemonSet replaces a separate node_exporter one and the existing
 	// dashboards and alert rules built on node_* keep working untouched.
 	neCount := 0
+	var neNames []string
 	if cfg.NodeExporter.Enabled {
 		c, err := nodeexporter.New(nodeexporter.Config{
 			ProcPath:    cfg.ProcRoot,
@@ -134,8 +135,8 @@ func main() {
 		// An empty set means the flags never took effect: the endpoint would
 		// serve zero node_* series while looking perfectly healthy, which is
 		// exactly the silent failure this project keeps running into.
-		names := nodeexporter.Enabled(c)
-		neCount = len(names)
+		neNames = nodeexporter.Enabled(c)
+		neCount = len(neNames)
 		if neCount == 0 {
 			slog.Error("node_exporter enabled but no collectors are active — refusing to serve an empty node_* surface")
 			os.Exit(1)
@@ -145,8 +146,17 @@ func main() {
 
 	// Native node_* groups. Registered independently of the embedded set so a
 	// deployment can run either, but never both for the same group — the
-	// chart pairs this flag with the matching --no-collector.* entries.
+	// chart pairs this flag with the matching --no-collector.* entries, but a
+	// hand-written (or stale) ConfigMap can set nativeCollectors without them.
+	// So this is checked again here against the embedded side's own
+	// live-reported collector set rather than trusted from the flags alone —
+	// the only defense that survives a ConfigMap the chart didn't render.
 	if cfg.NodeExporter.NativeCollectors {
+		if conflicts := nodecompat.ConflictingUpstreamCollectors(neNames); len(conflicts) > 0 {
+			slog.Error("nativeCollectors enabled but the embedded twin is still active for some groups — refusing to serve duplicate node_* names",
+				"groups", strings.Join(conflicts, ","))
+			os.Exit(1)
+		}
 		nc := nodecompat.New(cfg.ProcRoot, cfg.NodeExporter.RootFSPath, slog.Default())
 		if err := metrics.Register(nc); err != nil {
 			slog.Error("register native node collectors", "err", err)
