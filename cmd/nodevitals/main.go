@@ -158,13 +158,24 @@ func main() {
 		slog.Info("node_exporter collectors registered", "count", neCount)
 	}
 
+	// kube_* 표면. 설정이 잘못됐거나(cluster 모드·오타) 토큰이 없으면 여기서
+	// 멈춘다 — 그 상태로 계속 돌면 증상이 "메트릭이 안 나온다" 하나뿐이라
+	// 원인까지 도달하는 데 시간이 걸린다.
 	if cfg.KSMCompat.Enabled {
-		ksm := ksmcompat.New(ksmcompat.Config{Node: cfg.Node, Mode: cfg.KSMCompat.Mode})
+		ksm, err := ksmcompat.New(ksmcompat.Config{
+			Node: cfg.Node,
+			Mode: cfg.KSMCompat.Mode,
+			Log:  slog.Default(),
+		})
+		if err != nil {
+			slog.Error("ksm compat surface", "err", err)
+			os.Exit(1)
+		}
 		if err := metrics.Register(ksm); err != nil {
 			slog.Error("register ksm compat exporter", "err", err)
 			os.Exit(1)
 		}
-		slog.Info("ksm compat surface enabled", "mode", cfg.KSMCompat.Mode)
+		slog.Info("ksm compat surface enabled", "mode", "node", "scope", "this node and its pods")
 	}
 
 	// Long-term downsampled history — local to this node, survives past the

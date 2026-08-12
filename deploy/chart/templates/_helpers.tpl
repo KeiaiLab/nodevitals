@@ -214,3 +214,40 @@ Skipped when alreadyRoot: root already owns the file it's about to write.
       mountPath: {{ $ctx.Values.history.mountPath | quote }}
 {{- end }}
 {{- end -}}
+
+{{/*
+ServiceAccount wiring for a pod spec.
+
+Only ksmCompat needs Kubernetes API credentials — every other tier reads
+/proc, /sys, /dev and NVML. So the token is mounted only when it is switched
+on, and the pod otherwise keeps automountServiceAccountToken: false.
+
+Rendered only into the tiers that actually serve the kube_* surface (core and
+singlePod); smart and gpu have no ksmCompat section in their config and would
+be holding a credential they never present.
+*/}}
+{{- define "nodevitals.serviceAccount" -}}
+{{- if .Values.ksmCompat.enabled }}
+serviceAccountName: {{ include "nodevitals.name" . }}
+automountServiceAccountToken: true
+{{- else }}
+automountServiceAccountToken: false
+{{- end }}
+{{- end -}}
+
+{{/*
+Guard on ksmCompat.mode.
+
+"cluster" is refused at render time rather than at startup: nodevitals runs as
+a DaemonSet, so a cluster-wide collection happens once per node and every
+series is duplicated by the node count. The agent refuses it too, but finding
+out through a CrashLoop after the rollout is a worse way to learn it.
+*/}}
+{{- define "nodevitals.validateKsmMode" -}}
+{{- if .Values.ksmCompat.enabled }}
+{{- $m := .Values.ksmCompat.mode | default "node" }}
+{{- if ne $m "node" }}
+{{- fail (printf "ksmCompat.mode %q is not supported — nodevitals is a DaemonSet, so a cluster-wide collection would run once per node and duplicate every series by the node count. Use \"node\" and keep kube-state-metrics for cluster-scoped objects." $m) }}
+{{- end }}
+{{- end }}
+{{- end -}}

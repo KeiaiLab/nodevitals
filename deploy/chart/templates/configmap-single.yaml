@@ -1,3 +1,4 @@
+{{- include "nodevitals.validateKsmMode" . }}
 {{- if .Values.singlePod }}
 {{- $tiers := splitList " " (include "nodevitals.enabledTiers" .) }}
 apiVersion: v1
