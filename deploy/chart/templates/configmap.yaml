@@ -17,6 +17,7 @@ data:
 {{- if .Values.nodeExporter.enabled }}
     nodeExporter:
       enabled: true
+      nativeCollectors: {{ .Values.nodeExporter.nativeCollectors }}
       {{- if .Values.nodeExporter.mountRootFS }}
       rootfsPath: /host/root
       {{- end }}
@@ -27,6 +28,11 @@ data:
       extraFlags:
 {{ toYaml . | indent 8 }}
       {{- end }}
+{{- end }}
+{{- if .Values.ksmCompat.enabled }}
+    ksmCompat:
+      enabled: true
+      mode: {{ .Values.ksmCompat.mode | default "node" | quote }}
 {{- end }}
 {{- if .Values.history.enabled }}
     history:

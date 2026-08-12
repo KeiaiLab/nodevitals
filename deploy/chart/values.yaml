@@ -36,6 +36,10 @@ updateStrategy:
 # hostNetwork: true 가 필요하다 — upstream node_exporter 도 같은 이유로 그렇게 돈다.
 nodeExporter:
   enabled: false
+  # nativeCollectors 가 true 면 nodevitals 의 자체 Go 수집기(internal/nodecompat)가
+  # /proc 기반 node_* 지표(loadavg, filefd, entropy, procs, vmstat, uname, osrelease)를
+  # 직접 방출한다.
+  nativeCollectors: true
   # filesystem collector 는 호스트의 모든 마운트를 statfs 해야 하므로 호스트 루트를
   # 읽기전용으로 마운트한다(upstream node_exporter 차트와 동일). 이는 컨테이너에
   # **호스트 파일시스템 전체 읽기 권한**을 주는 것이므로, 디스크 사용량 메트릭이
@@ -101,6 +105,14 @@ dcgmCompat:
 # 그 신호를 조용히 덮는다). smart tier 가 꺼져 있으면 무효.
 smartctlCompat:
   enabled: false
+
+# kube-state-metrics (KSM) 호환 kube_* 표면. 별도 kube-state-metrics 파드 없이
+# nodevitals 가 kube_pod_*, kube_node_*, kube_deployment_*, kube_daemonset_*
+# 지표를 동일한 /metrics 로 직접 낸다.
+# mode: "node" (DaemonSet 기본값, 노드 단위 분산 수집) / "cluster" (전역 수집)
+ksmCompat:
+  enabled: false
+  mode: node
 
 # 장기보존 다운샘플링(internal/history) — Prometheus scrape retention 을 훌쩍
 # 넘겨 "이 GPU 3달/1년 사용률"에 답할 수 있게, 5분 평균 시계열을 노드 로컬

@@ -66,6 +66,9 @@ Call with (dict "ctx" . "tier" "<core|smart|gpu>").
 {{- define "nodevitals.configChecksums" -}}
 {{- $ctx := .ctx -}}
 {{- $suffix := ternary "" (printf "-%s" .tier) (eq .tier "core") -}}
+prometheus.io/scrape: "true"
+prometheus.io/port: {{ $ctx.Values.metrics.port | default "9847" | quote }}
+prometheus.io/path: "/metrics"
 checksum/config: {{ include (print $ctx.Template.BasePath "/configmap" $suffix ".yaml") $ctx | sha256sum }}
 checksum/webhook-secret: {{ include (print $ctx.Template.BasePath "/secret.yaml") $ctx | sha256sum }}
 {{- end -}}
