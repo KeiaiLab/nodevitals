@@ -12,6 +12,12 @@ import (
 // subCollector is the internal interface for individual metric group collectors.
 type subCollector interface {
 	Name() string
+	// Supersedes is the upstream node_exporter collector name whose metrics
+	// this one takes over. It is a compile-time obligation on purpose: a new
+	// sub-collector that does not answer it cannot be added to the set, and an
+	// upstream collector left enabled alongside its native replacement makes
+	// both register the same metric names.
+	Supersedes() string
 	Collect(ch chan<- prometheus.Metric) error
 }
 
@@ -42,6 +48,37 @@ func New(procRoot, sysRoot, rootFS string, log *slog.Logger) *Exporter {
 		log:    log,
 		logged: make(map[string]bool),
 	}
+}
+
+// SupersededCollectors returns the upstream node_exporter collector names that
+// this package's native collectors replace. It is derived from the set itself,
+// not from a second hand-kept list: the two drifting apart is precisely how a
+// native collector ends up running alongside the upstream one it replaced.
+func SupersededCollectors() []string {
+	e := New("", "", "", nil)
+	seen := make(map[string]bool, len(e.subs))
+	names := make([]string, 0, len(e.subs))
+	for _, sub := range e.subs {
+		n := sub.Supersedes()
+		if n == "" || seen[n] {
+			continue
+		}
+		seen[n] = true
+		names = append(names, n)
+	}
+	return names
+}
+
+// NoCollectorFlags returns the node_exporter flags that disable every upstream
+// collector superseded by this package. Pass them to nodeexporter.Config's
+// ExtraFlags whenever the native collectors are enabled.
+func NoCollectorFlags() []string {
+	superseded := SupersededCollectors()
+	flags := make([]string, 0, len(superseded))
+	for _, n := range superseded {
+		flags = append(flags, "--no-collector."+n)
+	}
+	return flags
 }
 
 // Describe satisfies prometheus.Collector.

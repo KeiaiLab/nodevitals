@@ -32,6 +32,8 @@ func newEntropy(procRoot string) subCollector {
 
 func (c *entropyCollector) Name() string { return "entropy" }
 
+func (c *entropyCollector) Supersedes() string { return "entropy" }
+
 func (c *entropyCollector) Collect(ch chan<- prometheus.Metric) error {
 	availPath := filepath.Join(c.procRoot, "sys/kernel/random/entropy_avail")
 	if data, err := os.ReadFile(availPath); err == nil {

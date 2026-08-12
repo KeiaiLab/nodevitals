@@ -73,6 +73,10 @@ jobs:
           platforms: linux/amd64
           load: true
           tags: ${{ env.IMG }}:scan
+          # 아래 push 스텝과 반드시 동일해야 한다 — build-arg 가 다르면 스캔한
+          # 이미지와 발행하는 이미지가 다른 산출물이 된다.
+          build-args: |
+            VERSION=${{ steps.ver.outputs.app }}
 
       - name: Trivy scan (HIGH/CRITICAL block)
         if: steps.img.outputs.exists == 'false'
@@ -93,6 +97,8 @@ jobs:
           provenance: true
           sbom: true
           tags: ${{ env.IMG }}:${{ steps.ver.outputs.app }}
+          build-args: |
+            VERSION=${{ steps.ver.outputs.app }}
 
       - uses: sigstore/cosign-installer@v3
         if: steps.img.outputs.exists == 'false'

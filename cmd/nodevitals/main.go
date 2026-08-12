@@ -27,6 +27,13 @@ import (
 	"github.com/KeiaiLab/nodevitals/internal/smartctlcompat"
 )
 
+// version 은 빌드 시 -ldflags "-X main.version=..." 로 주입된다. 소스에 릴리스
+// 번호를 적어 두면 bump 를 잊는 순간 이미지가 자기 버전을 틀리게 신고하고,
+// 그것이 배포 검증의 유일한 자기신고 수단이라 확인할 방법 자체가 사라진다.
+// 주입이 없으면 "unknown" 으로 남는다 — 모르는 것을 모른다고 말하는 편이,
+// 아닐 수도 있는 릴리스를 자칭하는 것보다 낫다.
+var version string
+
 func main() {
 	cfgPath := flag.String("config", "/etc/nodevitals/config.yaml", "config file path")
 	flag.Parse()
@@ -48,7 +55,7 @@ func main() {
 	for _, tier := range tiers {
 		switch tier {
 		case "core":
-			reg.Add(collector.NewHeartbeat(cfg.Node, "0.8.5"))
+			reg.Add(collector.NewHeartbeat(cfg.Node, version))
 			reg.Add(collector.NewLoadAvg(cfg.Node, cfg.ProcRoot))
 			reg.Add(collector.NewCPU(cfg.Node, cfg.ProcRoot))
 			reg.Add(collector.NewMem(cfg.Node, cfg.ProcRoot))
@@ -118,7 +125,7 @@ func main() {
 	// dashboards and alert rules built on node_* keep working untouched.
 	neCount := 0
 	if cfg.NodeExporter.Enabled {
-		extraFlags := cfg.NodeExporter.ExtraFlags
+		extraFlags := nodeExporterFlags(cfg.NodeExporter)
 		if cfg.NodeExporter.NativeCollectors {
 			nc := nodecompat.New(cfg.ProcRoot, cfg.SysRoot, cfg.NodeExporter.RootFSPath, slog.Default())
 			if err := metrics.Register(nc); err != nil {
@@ -126,10 +133,6 @@ func main() {
 				os.Exit(1)
 			}
 			slog.Info("native nodecompat collectors registered")
-			extraFlags = append(extraFlags,
-				"--no-collector.loadavg",
-				"--no-collector.uname",
-			)
 		}
 		c, err := nodeexporter.New(nodeexporter.Config{
 			ProcPath:    cfg.ProcRoot,
@@ -217,4 +220,26 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("http shutdown", "err", err)
 	}
+}
+
+// nodeExporterFlags 는 임베드 node_exporter 에 넘길 collector 플래그를 만든다.
+//
+// 자체 수집기가 켜지면 그것이 대체하는 upstream collector 를 **전부** 꺼야 한다.
+// 하나라도 남으면 같은 메트릭 이름이 두 곳에서 등록되고, client_golang 은 충돌한
+// family 를 스크레이프 결과에서 빼면서도 200 을 계속 준다 — 파드는 Ready, /metrics
+// 는 정상, 그 시리즈만 조용히 사라진다.
+//
+// 차단 목록은 nodecompat 이 자기 수집기 집합에서 파생시킨다. 여기에 이름을 다시
+// 적으면 nodecompat 에 수집기가 추가될 때마다 두 목록이 어긋난다 — 실제로 0.9.0 이
+// loadavg·uname 둘만 적어 나머지 다섯(entropy·filefd·stat·vmstat·os)이 중복됐다.
+func nodeExporterFlags(cfg config.NodeExporterConfig) []string {
+	if !cfg.NativeCollectors {
+		return cfg.ExtraFlags
+	}
+	// cfg.ExtraFlags 에 그대로 append 하면 cap 여유가 있을 때 호출자의 배열에
+	// 써 들어간다. config 는 한 번 읽어 계속 쓰이므로 복사해서 시작한다.
+	native := nodecompat.NoCollectorFlags()
+	flags := make([]string, 0, len(cfg.ExtraFlags)+len(native))
+	flags = append(flags, cfg.ExtraFlags...)
+	return append(flags, native...)
 }

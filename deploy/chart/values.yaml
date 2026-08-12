@@ -222,6 +222,17 @@ webhooks: []
 metrics:
   port: 9847
 
+# Prometheus 파드 어노테이션 발견(prometheus.io/scrape 등). ServiceMonitor CRD 가
+# 없고 스크레이프 설정이 `role: pod` 잡으로 대상을 잡는 클러스터(vmagent 의
+# kubernetes-pods 등)에서 켠다. 어노테이션은 파드 템플릿에 렌더된다 — DaemonSet
+# 객체에 붙이면 파드로 전파되지 않아 role:pod 발견이 보지 못한다.
+#
+# serviceMonitor 와 마찬가지로 기본 off 다. 발견 경로가 스스로 켜지면, 이미 Service
+# 로 수집하던 클러스터가 업그레이드만으로 같은 파드를 두 잡에서 긁게 되고, 모든
+# 시리즈가 job 라벨만 다른 2벌이 된다 — 에러는 어디에도 나지 않는다.
+scrapeAnnotations:
+  enabled: false
+
 # Prometheus Operator discovery. Off by default (requires the ServiceMonitor
 # CRD). When enabled, renders a headless Service + ServiceMonitor so the
 # /metrics endpoint of every nodevitals pod is scraped out of the box.

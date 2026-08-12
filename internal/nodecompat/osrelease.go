@@ -35,6 +35,10 @@ func newOSRelease(rootFS string) subCollector {
 
 func (c *osReleaseCollector) Name() string { return "osrelease" }
 
+// node_os_info / node_os_version come from upstream's "os" collector
+// (os_release.go), which is not named after the file it reads.
+func (c *osReleaseCollector) Supersedes() string { return "os" }
+
 func (c *osReleaseCollector) Collect(ch chan<- prometheus.Metric) error {
 	m, err := parseOSRelease(c.rootFS)
 	if err != nil {

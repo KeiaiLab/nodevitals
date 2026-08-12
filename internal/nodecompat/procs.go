@@ -34,6 +34,10 @@ func newProcs(procRoot string) subCollector {
 
 func (c *procsCollector) Name() string { return "procs" }
 
+// node_procs_running / node_procs_blocked belong to upstream's "stat"
+// collector, not to a "procs" one — that collector does not exist.
+func (c *procsCollector) Supersedes() string { return "stat" }
+
 func (c *procsCollector) Collect(ch chan<- prometheus.Metric) error {
 	path := filepath.Join(c.procRoot, "stat")
 	file, err := os.Open(path)

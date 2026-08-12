@@ -14,9 +14,14 @@ type heartbeatCollector struct {
 }
 
 // NewHeartbeat returns a collector that emits nodevitals_up and nodevitals_build_info.
+//
+// An un-injected version becomes "unknown", never a release number. This metric
+// is the only thing that can answer "which build is actually running on this
+// node", so a plausible-looking default would take that answer away: the 0.9.0
+// image reported version="0.8.5" for exactly this reason.
 func NewHeartbeat(node, version string) Collector {
 	if version == "" {
-		version = "0.8.5"
+		version = "unknown"
 	}
 	return &heartbeatCollector{node: node, version: version}
 }

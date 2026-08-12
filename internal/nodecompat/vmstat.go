@@ -31,6 +31,8 @@ func newVMStat(procRoot string) subCollector {
 
 func (c *vmstatCollector) Name() string { return "vmstat" }
 
+func (c *vmstatCollector) Supersedes() string { return "vmstat" }
+
 func (c *vmstatCollector) Collect(ch chan<- prometheus.Metric) error {
 	path := filepath.Join(c.procRoot, "vmstat")
 	file, err := os.Open(path)

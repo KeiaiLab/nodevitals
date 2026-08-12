@@ -38,6 +38,8 @@ func newLoadAvg(procRoot string) subCollector {
 
 func (c *loadAvgCollector) Name() string { return "loadavg" }
 
+func (c *loadAvgCollector) Supersedes() string { return "loadavg" }
+
 func (c *loadAvgCollector) Collect(ch chan<- prometheus.Metric) error {
 	path := filepath.Join(c.procRoot, "loadavg")
 	data, err := os.ReadFile(path)

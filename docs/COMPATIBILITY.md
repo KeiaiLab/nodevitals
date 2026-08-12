@@ -1,7 +1,7 @@
 # nodevitals — 서비스 전수 호환성 및 연동 명세서 (Compatibility Matrix)
 
 > 저장소: [`github.com/KeiaiLab/nodevitals`](https://github.com/KeiaiLab/nodevitals)  
-> 기준 버전: `v0.8.5` (Chart v0.8.6)  
+> 기준 버전: `v0.9.1` (Chart v0.9.1)  
 > 최종 검증 일시: 2026년 8월 12일  
 
 본 문서는 `nodevitals`가 연동되는 주요 인프라 서비스, 관측 플랫폼, GPU 오퍼레이터, 가상머신(VM) 환경 간의 명시적 호환성 계약(Compatibility Contract)과 실측 검증 결과를 제공합니다.
@@ -13,7 +13,7 @@
 | 연동 대상 서비스 / 솔루션 | 호환성 상태 | 연동 메커니즘 & 수집 방식 | 비고 / 주요 구성 |
 |---|---|---|---|
 | **NVIDIA GPU-Operator** | **100% 호환 (DCGM 대체)** | `dcgmCompat.enabled: true` | `dcgmExporter.enabled: false` 설정 후 `DCGM_FI_*` 18개 메트릭 승계 |
-| **VictoriaMetrics (vmagent)** | **100% 호환 (자동 탐지)** | Pod Annotation (`prometheus.io/scrape: "true"`) | `vmagent` kubernetes-pods 잡 자동 수집 (`port: 9847`) |
+| **VictoriaMetrics (vmagent)** | **호환 (opt-in 자동 탐지)** | Pod Annotation — `scrapeAnnotations.enabled: true` 필요 (기본 `false`) | `vmagent` kubernetes-pods 잡 자동 수집 (`port: 9847`). **Service/ServiceMonitor 로 이미 수집 중이면 켜지 말 것 — 이중 수집** (§2.2) |
 | **VictoriaMetrics (vmsingle/cluster)** | **100% 호환** | TSDB Scrape & Remote Write | Prometheus TSDB 1.0 표준 데이터 100% 수용 |
 | **Prometheus Operator / Alertmanager** | **100% 호환** | `/metrics` + Service/PodMonitor | `node_*`, `DCGM_FI_*`, `smartctl_*` 기존 알림 룰 그대로 동작 |
 | **Grafana Dashboard Stack** | **100% 호환** | PromQL 드롭인 쿼리 | 기존 `node_exporter`, `dcgm`, `smartctl` 전용 대시보드 변경 0 |
@@ -48,16 +48,28 @@
 ### 2.2 VictoriaMetrics (`vmagent`) 연동
 `keiailab-platform`과 같이 Prometheus Operator CRD 대신 `vmagent` 정적 수집 스택을 사용하는 환경의 호환성입니다.
 
-- **자동 발견 어노테이션 (Auto-Discovery Pod Annotations)**:
-  `nodevitals` 파드 템플릿에 아래 어노테이션이 기본 렌더링됩니다:
+- **자동 발견 어노테이션 (Auto-Discovery Pod Annotations)** — **opt-in 입니다**:
   ```yaml
-  metadata:
-    annotations:
-      prometheus.io/scrape: "true"
-      prometheus.io/port: "9847"
-      prometheus.io/path: "/metrics"
+  scrapeAnnotations:
+    enabled: true   # 기본값 false
   ```
-- **`vmagent` 수집 동기화**: `vmagent`의 `kubernetes-pods` 메트릭 수집 작업이 해당 어노테이션을 감지하여 별도의 CRD 등록 없이 즉시 `/metrics` 수집을 시작합니다.
+  켜면 파드 템플릿(`spec.template.metadata.annotations`)에 아래가 렌더됩니다:
+  ```yaml
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9847"
+  prometheus.io/path: "/metrics"
+  ```
+  DaemonSet 객체가 아니라 **파드 템플릿**이어야 합니다 — 객체의 어노테이션은 파드로 전파되지 않아
+  `role: pod` 발견이 영영 보지 못합니다.
+
+- **`vmagent` 수집 동기화**: 켜면 `vmagent`의 `kubernetes-pods`(`role: pod`) 작업이 어노테이션을 감지해
+  CRD 등록 없이 즉시 `/metrics` 를 수집합니다.
+
+> [!WARNING]
+> **이미 Service / ServiceMonitor 로 수집 중이라면 켜지 마십시오.** `kubernetes-service-endpoints`
+> 계열 작업이 같은 파드를 이미 긁고 있는 상태에서 이것을 켜면, 동일한 시리즈가 `job` 라벨만 다른
+> **2벌**로 저장됩니다. 오류는 어디에도 나지 않고 카디널리티와 저장량만 두 배가 되므로,
+> 수집 경로는 **하나만** 켜 두십시오. 기본값이 `false` 인 이유가 이것입니다.
 
 ### 2.3 Standalone Linux VM / 베어메탈 호스트 연동
 Kubernetes 클러스터 외부의 독립 Linux 가상머신(VM) 또는 베어메탈 전용 장비에서의 기동 가이드입니다.

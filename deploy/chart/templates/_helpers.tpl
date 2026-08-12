@@ -66,11 +66,30 @@ Call with (dict "ctx" . "tier" "<core|smart|gpu>").
 {{- define "nodevitals.configChecksums" -}}
 {{- $ctx := .ctx -}}
 {{- $suffix := ternary "" (printf "-%s" .tier) (eq .tier "core") -}}
-prometheus.io/scrape: "true"
-prometheus.io/port: {{ $ctx.Values.metrics.port | default "9847" | quote }}
-prometheus.io/path: "/metrics"
 checksum/config: {{ include (print $ctx.Template.BasePath "/configmap" $suffix ".yaml") $ctx | sha256sum }}
 checksum/webhook-secret: {{ include (print $ctx.Template.BasePath "/secret.yaml") $ctx | sha256sum }}
+{{- end -}}
+
+{{/*
+Prometheus pod-discovery annotations, for clusters whose scrape config picks
+targets up by pod annotation (a `role: pod` job) rather than by Service or
+ServiceMonitor.
+
+Off by default, like serviceMonitor.enabled, because a discovery mechanism that
+turns itself on is the one that hurts: a cluster already scraping this chart
+through a Service keeps doing so, and the pod job starts scraping the very same
+pods as well. Every series then exists twice under two job labels — no error
+anywhere, just doubled cardinality and storage.
+
+These belong in the *pod* template. An annotation on the DaemonSet object is
+not propagated to its pods, so `role: pod` discovery would never see it.
+*/}}
+{{- define "nodevitals.scrapeAnnotations" -}}
+{{- if .Values.scrapeAnnotations.enabled -}}
+prometheus.io/scrape: "true"
+prometheus.io/port: {{ .Values.metrics.port | default "9847" | quote }}
+prometheus.io/path: "/metrics"
+{{- end -}}
 {{- end -}}
 
 {{/*
