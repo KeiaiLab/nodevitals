@@ -33,6 +33,8 @@ func newFileFD(procRoot string) subCollector {
 
 func (c *fileFDCollector) Name() string { return "filefd" }
 
+func (c *fileFDCollector) Supersedes() string { return "filefd" }
+
 func (c *fileFDCollector) Collect(ch chan<- prometheus.Metric) error {
 	path := filepath.Join(c.procRoot, "sys/fs/file-nr")
 	data, err := os.ReadFile(path)

@@ -9,10 +9,23 @@ CHART_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 echo "=== 1. Checking default template rendering ==="
 rendered="$(helm template nodevitals "$CHART_DIR")"
 
-echo "=== 2. Checking vmagent auto-discovery annotations ==="
-echo "$rendered" | grep -q 'prometheus.io/scrape: "true"' || { echo "FAIL: missing prometheus.io/scrape annotation"; exit 1; }
-echo "$rendered" | grep -q 'prometheus.io/port: "9847"' || { echo "FAIL: missing prometheus.io/port annotation"; exit 1; }
-echo "PASS: vmagent annotations present"
+echo "=== 2. Checking vmagent auto-discovery annotations are opt-in ==="
+# 기본 렌더에는 없어야 한다. 이 차트를 이미 Service/ServiceMonitor 로 수집하던
+# 클러스터에서는, 업그레이드만으로 role:pod 잡이 같은 파드를 한 벌 더 긁기
+# 시작해 모든 시리즈가 2벌이 된다 — 에러 없이, 청구서와 카디널리티로만 드러난다.
+if echo "$rendered" | grep -q 'prometheus.io/scrape'; then
+  echo "FAIL: scrape annotations render by default; a chart user already scraping via Service would silently double-collect after an upgrade"
+  exit 1
+fi
+echo "PASS: no scrape annotations unless asked for"
+
+# 켠 경우에는 **파드 템플릿 안**이어야 한다. DaemonSet 객체에 붙은 annotation 은
+# 파드로 전파되지 않으므로 role:pod 발견은 그것을 영영 보지 못한다.
+disc_rendered="$(helm template nodevitals "$CHART_DIR" --set scrapeAnnotations.enabled=true)"
+pod_meta="$(echo "$disc_rendered" | awk '/^  template:/,/^    spec:/')"
+echo "$pod_meta" | grep -q 'prometheus.io/scrape: "true"' || { echo "FAIL: scrape annotation is not inside the pod template; role:pod discovery cannot see it"; exit 1; }
+echo "$pod_meta" | grep -q 'prometheus.io/port: "9847"' || { echo "FAIL: port annotation is not inside the pod template"; exit 1; }
+echo "PASS: scrape annotations land in the pod template when enabled"
 
 echo "=== 3. Checking gpu-operator & dcgmCompat rendering ==="
 gpu_rendered="$(helm template nodevitals "$CHART_DIR" --set tiers.gpu.enabled=true --set tiers.gpu.runtimeClassName=nvidia --set dcgmCompat.enabled=true)"

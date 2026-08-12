@@ -21,6 +21,7 @@ spec:
         app.kubernetes.io/component: smart
       annotations:
         {{- include "nodevitals.configChecksums" (dict "ctx" . "tier" "smart") | nindent 8 }}
+        {{- include "nodevitals.scrapeAnnotations" . | nindent 8 }}
     spec:
       automountServiceAccountToken: false
       containers:

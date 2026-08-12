@@ -15,8 +15,12 @@ COPY go.mod go.sum* ./
 RUN go mod download
 COPY . .
 ARG TARGETARCH=amd64
+# VERSION becomes nodevitals_build_info{version=...}, the only way to ask a
+# running node which build it is on. Left unset it stays "unknown" rather than
+# naming a release the binary may not be.
+ARG VERSION=""
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=${TARGETARCH} \
-    go build -trimpath -ldflags="-s -w" -tags gpu -o /out/nodevitals ./cmd/nodevitals
+    go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -tags gpu -o /out/nodevitals ./cmd/nodevitals
 
 FROM gcr.io/distroless/cc-debian12:nonroot
 # Links the ghcr package to this repository, so the image shows up under the

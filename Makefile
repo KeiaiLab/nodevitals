@@ -21,7 +21,10 @@ fmt:
 build:
 	# 이미지와 같은 CGO_ENABLED=1 — go-nvml 과 node_exporter 의 일부 collector 가
 	# cgo 를 요구한다. 0 으로 두면 로컬 게이트만 실패해 이미지와 어긋난다.
-	CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -tags gpu -o dist/nodevitals ./cmd/nodevitals
+	#
+	# -X main.version 은 Chart.yaml 의 appVersion 을 그대로 흘려보낸다. 릴리스
+	# 파이프라인도 같은 값을 진실로 삼으므로, 버전이 사는 곳은 Chart.yaml 하나다.
+	CGO_ENABLED=1 go build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" -tags gpu -o dist/nodevitals ./cmd/nodevitals
 
 docker:
 	docker build --platform=linux/amd64 -t ghcr.io/keiailab/nodevitals:dev .
@@ -35,6 +38,7 @@ chart-lint:
 chart-test:
 	bash deploy/chart/tests/secret-isolation.sh
 	bash deploy/chart/tests/tier-runtime.sh
+	bash deploy/chart/tests/compatibility-check.sh
 
 # Vuln-scan IMGREF, failing on HIGH/CRITICAL. Override IMGREF for the gpu image.
 scan:

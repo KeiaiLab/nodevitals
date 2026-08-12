@@ -21,6 +21,7 @@ spec:
         app.kubernetes.io/component: core
       annotations:
         {{- include "nodevitals.configChecksums" (dict "ctx" . "tier" "core") | nindent 8 }}
+        {{- include "nodevitals.scrapeAnnotations" . | nindent 8 }}
     spec:
       automountServiceAccountToken: false
       {{- include "nodevitals.hostNetwork" . | nindent 6 }}

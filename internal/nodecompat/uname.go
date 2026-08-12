@@ -20,6 +20,8 @@ func newUname() subCollector {
 
 func (c *unameCollector) Name() string { return "uname" }
 
+func (c *unameCollector) Supersedes() string { return "uname" }
+
 func (c *unameCollector) Collect(ch chan<- prometheus.Metric) error {
 	var uts unix.Utsname
 	if err := unix.Uname(&uts); err != nil {
