@@ -56,6 +56,8 @@ type Config struct {
 	DevRoot         string      `yaml:"devRoot"`
 	Rules           []Rule      `yaml:"rules"`
 	Sinks           SinksConfig `yaml:"sinks"`
+	// Labels attaches static cluster topology metadata (e.g. cluster, region, pool) to all samples and events.
+	Labels map[string]string `yaml:"labels"`
 	// NodeExporter serves the upstream node_* metric surface from this same
 	// process, so one DaemonSet can replace a separate node_exporter one.
 	NodeExporter NodeExporterConfig `yaml:"nodeExporter"`
@@ -69,6 +71,9 @@ type Config struct {
 	// separate smartctl_exporter one. Only effective when the smart tier is
 	// enabled — there is no data to serve without it.
 	SmartctlCompat SmartctlCompatConfig `yaml:"smartctlCompat"`
+	// KSMCompat serves a kube-state-metrics-compatible kube_* surface for
+	// K8s pods, nodes, workloads, and storage directly from this process.
+	KSMCompat KSMCompatConfig `yaml:"ksmCompat"`
 	// History downsamples an allowlist of metrics to 5-minute averages on
 	// local disk, so a hardware trend survives long past the Prometheus
 	// scrape retention window — see internal/history.
@@ -83,6 +88,12 @@ type DCGMCompatConfig struct {
 // SmartctlCompatConfig configures the smartctl_* compatibility surface.
 type SmartctlCompatConfig struct {
 	Enabled bool `yaml:"enabled"`
+}
+
+// KSMCompatConfig configures the kube-state-metrics compatibility surface.
+type KSMCompatConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Mode    string `yaml:"mode"` // "node" (default) or "cluster"
 }
 
 // HistoryConfig configures the local long-term downsampled store
@@ -112,10 +123,11 @@ var defaultHistoryMetrics = []string{
 // NodeExporterConfig configures the embedded node_exporter collectors. Paths
 // point at the host mounts, not the container's own /proc and /sys.
 type NodeExporterConfig struct {
-	Enabled     bool     `yaml:"enabled"`
-	TextfileDir string   `yaml:"textfileDir"`
-	RootFSPath  string   `yaml:"rootfsPath"`
-	ExtraFlags  []string `yaml:"extraFlags"`
+	Enabled          bool     `yaml:"enabled"`
+	NativeCollectors bool     `yaml:"nativeCollectors"`
+	TextfileDir      string   `yaml:"textfileDir"`
+	RootFSPath       string   `yaml:"rootfsPath"`
+	ExtraFlags       []string `yaml:"extraFlags"`
 }
 
 // ResolvedTiers returns the tiers to run, in config order and de-duplicated.

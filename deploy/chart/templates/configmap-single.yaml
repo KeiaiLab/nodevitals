@@ -30,6 +30,7 @@ data:
 {{- if .Values.nodeExporter.enabled }}
     nodeExporter:
       enabled: true
+      nativeCollectors: {{ .Values.nodeExporter.nativeCollectors }}
       {{- if .Values.nodeExporter.mountRootFS }}
       rootfsPath: /host/root
       {{- end }}
@@ -48,6 +49,11 @@ data:
 {{- if and .Values.tiers.smart.enabled .Values.smartctlCompat.enabled }}
     smartctlCompat:
       enabled: true
+{{- end }}
+{{- if .Values.ksmCompat.enabled }}
+    ksmCompat:
+      enabled: true
+      mode: {{ .Values.ksmCompat.mode | default "node" | quote }}
 {{- end }}
 {{- if .Values.history.enabled }}
     history:

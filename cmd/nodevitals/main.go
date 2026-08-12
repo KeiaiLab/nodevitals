@@ -20,6 +20,8 @@ import (
 	"github.com/KeiaiLab/nodevitals/internal/event"
 	"github.com/KeiaiLab/nodevitals/internal/history"
 	"github.com/KeiaiLab/nodevitals/internal/httpapi"
+	"github.com/KeiaiLab/nodevitals/internal/ksmcompat"
+	"github.com/KeiaiLab/nodevitals/internal/nodecompat"
 	"github.com/KeiaiLab/nodevitals/internal/nodeexporter"
 	"github.com/KeiaiLab/nodevitals/internal/sink"
 	"github.com/KeiaiLab/nodevitals/internal/smartctlcompat"
@@ -46,6 +48,7 @@ func main() {
 	for _, tier := range tiers {
 		switch tier {
 		case "core":
+			reg.Add(collector.NewHeartbeat(cfg.Node, "0.8.5"))
 			reg.Add(collector.NewLoadAvg(cfg.Node, cfg.ProcRoot))
 			reg.Add(collector.NewCPU(cfg.Node, cfg.ProcRoot))
 			reg.Add(collector.NewMem(cfg.Node, cfg.ProcRoot))
@@ -115,12 +118,25 @@ func main() {
 	// dashboards and alert rules built on node_* keep working untouched.
 	neCount := 0
 	if cfg.NodeExporter.Enabled {
+		extraFlags := cfg.NodeExporter.ExtraFlags
+		if cfg.NodeExporter.NativeCollectors {
+			nc := nodecompat.New(cfg.ProcRoot, cfg.SysRoot, cfg.NodeExporter.RootFSPath, slog.Default())
+			if err := metrics.Register(nc); err != nil {
+				slog.Error("register native nodecompat exporter", "err", err)
+				os.Exit(1)
+			}
+			slog.Info("native nodecompat collectors registered")
+			extraFlags = append(extraFlags,
+				"--no-collector.loadavg",
+				"--no-collector.uname",
+			)
+		}
 		c, err := nodeexporter.New(nodeexporter.Config{
 			ProcPath:    cfg.ProcRoot,
 			SysPath:     cfg.SysRoot,
 			RootFSPath:  cfg.NodeExporter.RootFSPath,
 			TextfileDir: cfg.NodeExporter.TextfileDir,
-			ExtraFlags:  cfg.NodeExporter.ExtraFlags,
+			ExtraFlags:  extraFlags,
 		}, slog.Default())
 		if err != nil {
 			slog.Error("node_exporter collectors", "err", err)
@@ -140,6 +156,15 @@ func main() {
 			os.Exit(1)
 		}
 		slog.Info("node_exporter collectors registered", "count", neCount)
+	}
+
+	if cfg.KSMCompat.Enabled {
+		ksm := ksmcompat.New(ksmcompat.Config{Node: cfg.Node, Mode: cfg.KSMCompat.Mode})
+		if err := metrics.Register(ksm); err != nil {
+			slog.Error("register ksm compat exporter", "err", err)
+			os.Exit(1)
+		}
+		slog.Info("ksm compat surface enabled", "mode", cfg.KSMCompat.Mode)
 	}
 
 	// Long-term downsampled history — local to this node, survives past the
