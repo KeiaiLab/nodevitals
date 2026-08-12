@@ -40,8 +40,12 @@ func New(procRoot, sysRoot, rootFS string, log *slog.Logger) *Exporter {
 			newLoadAvg(procRoot),
 			newFileFD(procRoot),
 			newEntropy(procRoot),
-			newProcs(procRoot),
 			newVMStat(procRoot),
+			// procs(node_procs_running/blocked)는 의도적으로 없다. upstream 의
+			// "stat" collector 가 같은 /proc/stat 에서 그 둘에 더해
+			// boot_time_seconds·context_switches_total·forks_total·intr_total 까지
+			// 내므로, 둘만 내면서 stat 을 끄면 나머지 넷이 통째로 사라진다
+			// (2026-08-12 카나리 실측). parity 테스트가 이 조건을 강제한다.
 			newUname(),
 			newOSRelease(rootFS),
 		},

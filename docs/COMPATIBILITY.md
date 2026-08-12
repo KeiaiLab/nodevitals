@@ -1,7 +1,7 @@
 # nodevitals — 서비스 전수 호환성 및 연동 명세서 (Compatibility Matrix)
 
 > 저장소: [`github.com/KeiaiLab/nodevitals`](https://github.com/KeiaiLab/nodevitals)  
-> 기준 버전: `v0.9.2` (Chart v0.9.2)  
+> 기준 버전: `v0.9.3` (Chart v0.9.3)  
 > 최종 검증 일시: 2026년 8월 12일  
 
 본 문서는 `nodevitals`가 연동되는 주요 인프라 서비스, 관측 플랫폼, GPU 오퍼레이터, 가상머신(VM) 환경 간의 명시적 호환성 계약(Compatibility Contract)과 실측 검증 결과를 제공합니다.
