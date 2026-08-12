@@ -56,7 +56,6 @@ func TestNoCollectorFlagsCoverEverySupersededCollector(t *testing.T) {
 func TestSupersededNamesAreUpstreamNamesNotLocalNames(t *testing.T) {
 	e := New("/proc", "/sys", "/", nil)
 	want := map[string]string{
-		"procs":     "stat",
 		"osrelease": "os",
 	}
 	for _, sub := range e.subs {

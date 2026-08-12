@@ -37,8 +37,14 @@ updateStrategy:
 nodeExporter:
   enabled: false
   # nativeCollectors 가 true 면 nodevitals 의 자체 Go 수집기(internal/nodecompat)가
-  # /proc 기반 node_* 지표(loadavg, filefd, entropy, procs, vmstat, uname, osrelease)를
-  # 직접 방출한다.
+  # /proc 기반 node_* 지표(loadavg, filefd, entropy, vmstat, uname, osrelease)를
+  # 직접 방출하고, 그것들이 대체하는 upstream collector 는 자동으로 꺼진다.
+  #
+  # 대체는 collector 단위라 전부-아니면-전무다: 자체 수집기가 upstream collector 의
+  # 메트릭 일부만 내면 나머지는 통째로 사라진다(2026-08-12 카나리 실측 — procs 가
+  # node_procs_running/blocked 만 내면서 stat 을 끄는 바람에 boot_time·
+  # context_switches·forks·intr 넷이 소실됐다). parity 테스트가 두 집합이 정확히
+  # 일치하는지 CI 에서 강제한다.
   nativeCollectors: true
   # filesystem collector 는 호스트의 모든 마운트를 statfs 해야 하므로 호스트 루트를
   # 읽기전용으로 마운트한다(upstream node_exporter 차트와 동일). 이는 컨테이너에
