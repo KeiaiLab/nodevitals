@@ -1,0 +1,49 @@
+{{- if .Values.ksmCompat.enabled }}
+# ksmCompat 이 켜졌을 때만 존재한다. 그 외 모든 tier 는 /proc·/sys·/dev 와 NVML 만
+# 읽으므로 Kubernetes API 자격이 아예 필요 없고, 쓰지 않는 권한을 상시로 들고 있을
+# 이유도 없다.
+#
+# 권한은 이 에이전트가 실제로 답하는 범위에서 역산했다 — 자기 노드 하나와 그
+# 노드에 스케줄된 파드. kube-state-metrics 의 ClusterRole(20+ 리소스)을 복사하지
+# 않는다: 읽지 않는 리소스에 대한 list/watch 는 이 파드가 탈취됐을 때 그대로
+# 클러스터 열람 권한이 된다.
+#
+# pods 가 list 인 이유: 서버 쪽 fieldSelector(spec.nodeName)로 자기 노드로 좁히지만,
+# RBAC 은 필드 단위로 좁힐 수 없어 리소스 단위 권한이 된다. nodes 는 이름으로
+# 하나만 읽으므로 get 이면 충분하다.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "nodevitals.name" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "nodevitals.name" . }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "nodevitals.name" . }}-ksmcompat
+  labels:
+    app.kubernetes.io/name: {{ include "nodevitals.name" . }}
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "nodevitals.name" . }}-ksmcompat
+  labels:
+    app.kubernetes.io/name: {{ include "nodevitals.name" . }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "nodevitals.name" . }}-ksmcompat
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "nodevitals.name" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

@@ -106,10 +106,26 @@ dcgmCompat:
 smartctlCompat:
   enabled: false
 
-# kube-state-metrics (KSM) 호환 kube_* 표면. 별도 kube-state-metrics 파드 없이
-# nodevitals 가 kube_pod_*, kube_node_*, kube_deployment_*, kube_daemonset_*
-# 지표를 동일한 /metrics 로 직접 낸다.
-# mode: "node" (DaemonSet 기본값, 노드 단위 분산 수집) / "cluster" (전역 수집)
+# kube-state-metrics 호환 kube_* 표면 — **노드 스코프 한정**.
+#
+# 이 에이전트가 사실로서 말할 수 있는 범위, 즉 자기 노드 하나와 그 노드에
+# 스케줄된 파드만 낸다: kube_node_info / kube_node_status_condition /
+# kube_node_status_capacity / kube_node_status_allocatable / kube_pod_info /
+# kube_pod_status_phase / kube_pod_container_status_ready / _restarts_total.
+# 값은 전부 API 서버에서 읽는다.
+#
+# **kube-state-metrics 를 은퇴시키지는 못한다.** kube_deployment_* ·
+# kube_daemonset_* 같은 클러스터 스코프 지표는 여기서 내지 않는다 — DaemonSet 은
+# 노드마다 한 벌 도는데, 전역 객체를 각자 보고하면 같은 시리즈가 노드 수만큼
+# 생긴다. dcgmCompat·smartctlCompat 이 대체에 성공한 이유는 원본이 애초에
+# DaemonSet 이었기 때문이고, KSM 은 단일 Deployment 라 전제가 다르다.
+# 그 지표들이 필요하면 kube-state-metrics 를 그대로 두면 된다(같이 떠 있어도
+# 메트릭 이름이 겹치지 않는다).
+#
+# 켜면 ServiceAccount + ClusterRole(nodes:get, pods:list) + Binding 이 함께
+# 렌더되고 파드가 토큰을 마운트한다. 끄면 그 어느 것도 생기지 않는다.
+#
+# mode 는 "node" 만 유효하다. "cluster" 는 helm 렌더 단계에서 거부된다.
 ksmCompat:
   enabled: false
   mode: node

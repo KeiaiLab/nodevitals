@@ -25,7 +25,7 @@ spec:
         {{- include "nodevitals.configChecksums" (dict "ctx" . "tier" "single") | nindent 8 }}
         {{- include "nodevitals.scrapeAnnotations" . | nindent 8 }}
     spec:
-      automountServiceAccountToken: false
+      {{- include "nodevitals.serviceAccount" . | nindent 6 }}
       {{- include "nodevitals.hostNetwork" . | nindent 6 }}
       {{- if .Values.tiers.gpu.enabled }}
       {{- with .Values.tiers.gpu.runtimeClassName }}
